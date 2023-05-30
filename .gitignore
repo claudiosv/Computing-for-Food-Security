@@ -1,1 +1,9 @@
 .DS_Store
+*.tif
+*.xml
+*.tfw
+*.ovr
+*.ovr_tmp
+*.cpg
+*.dbf
+*.tif_bak
