@@ -830,12 +830,10 @@ df_ysc_y_soil_weather_weekly.to_csv(ml_file, index=False)
 print("Wrote file ", ml_file)
 
 
-ml_tables_dir = archive_dir + "ML-TABLES--v01/"
-
-ml_file = "ML-table-monthly.csv"
+ml_file = ml_tables_dir  / "ML-table-monthly.csv"
 
 
-df_ml = pd.read_csv(ml_tables_dir + ml_file)
+df_ml = pd.read_csv(ml_file)
 print(df_ml.shape)
 print(df_ml.head())
 
