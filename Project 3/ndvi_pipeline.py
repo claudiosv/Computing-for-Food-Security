@@ -47,7 +47,7 @@ def plot_image(image, factor=1, clip_range=(0, 1)):
 
 # will fetch the lon-lats at center of each county from the file state_county_lon_lats.csv
 
-archive_dir = "../ML-pipeline-for-soybean-yield-forecast/ML-ARCHIVES--v01/"
+archive_dir = "ML-ARCHIVES--v01/"
 scll = "state_county_lon_lat.csv"
 
 df_scll = pd.read_csv(archive_dir + scll)
@@ -59,10 +59,9 @@ def approx_county_bbox(state, county):
     rows = df_scll.loc[
         (df_scll["state_name"] == state) & (df_scll["county_name"] == county)
     ]
-    # print(rows)
+
     lon = rows["lon"].values[0]
     lat = rows["lat"].values[0]
-    # print(lon,lat)
 
     if True:
         west_lon = lon - 0.5
@@ -102,7 +101,7 @@ county_path = county_dir + county_file
 # Load county boundary data from Shapefile
 counties = gpd.read_file(county_path)
 
-# Print column names
+
 print(counties.head())
 # <span style=color:blue>The state_name, county_name values from the USDA NASS yield data are all capitals, and need to convert to the format above, which is first-letter-is-capitalized     </span>
 
@@ -112,12 +111,6 @@ print("DU PAGE".title())
 # <span style=color:blue>Function to test with a given lon-lat is in a state-county     </span>
 
 # Load county boundary data; this is a .dbf file
-
-# downloaded this from
-county_dir = "COUNTY-BOUNDING-POLYGONS/"
-county_file = "cb_2022_us_county_20m.dbf"
-county_path = county_dir + county_file
-counties = gpd.read_file(county_path)
 
 
 def lon_lat_in_county(longitude, latitude, state_name, county_name):
@@ -129,7 +122,6 @@ def lon_lat_in_county(longitude, latitude, state_name, county_name):
         (counties["NAME"] == county_name.title())
         & (counties["STATE_NAME"] == state_name.title())
     ]
-    # print(county)
 
     if county.empty:
         print(f"County '{county_name}' not found.")
@@ -159,11 +151,11 @@ print(lon_lat_in_county(lon_out, lat_out, state_name, county_name))
 def gen_lon_lat_in_county(state_name, county_name, count):
     list = []
     bbox = approx_county_bbox(state_name, county_name)
-    # print(json.dumps(bbox, indent=4, sort_keys=True))
+
     for i in range(0, count):
         r1 = random.uniform(0, 1)
         r2 = random.uniform(0, 1)
-        # print(r1,r2)
+
         lon = round(bbox["east_lon"] + r1 * (bbox["west_lon"] - bbox["east_lon"]), 7)
         lat = round(bbox["south_lat"] + r2 * (bbox["north_lat"] - bbox["south_lat"]), 7)
         list += [[lon, lat]]
@@ -200,7 +192,7 @@ def create_lon_lat_seqs(count):
         dict[state] = {}
     for i in range(0, len(df_scll)):
         row = df_scll.iloc[i]
-        # print(row)
+
         state = row["state_name"]
         county = row["county_name"]
         dict[state][county] = gen_lon_lat_in_county(state, county, count)
@@ -213,7 +205,7 @@ print(datetime.datetime.now())
 dict = create_lon_lat_seqs(5000)
 print(datetime.datetime.now())
 
-# print(json.dumps(dict, indent=4, sort_keys=True))
+
 # <span style=color:blue>Save dict as json  </span>
 
 out_file = "state_county__seq_of_lon_lats.json"
@@ -289,15 +281,19 @@ def pull_useful_gdal(dataset):
     print("Dataset project", dataset.GetProjection())
 
     tgt_srs = osr.SpatialReference()
-    tgt_srs.ImportFromEPSG(4326) #4326  # WGS84 #  , 8826
+    tgt_srs.ImportFromEPSG(4326)  # 4326  # WGS84 #  , 8826
 
     # Set up a coordinate transformation
     transform = osr.CoordinateTransformation(src_srs, tgt_srs)
 
     # Get corner coordinates and reproject them
     corners_projected = {}
-    for name, coords in [('upperLeft', (0, 0)), ('lowerLeft', (0, dataset.RasterYSize)),
-                         ('upperRight', (dataset.RasterXSize, 0)), ('lowerRight', (dataset.RasterXSize, dataset.RasterYSize))]:
+    for name, coords in [
+        ("upperLeft", (0, 0)),
+        ("lowerLeft", (0, dataset.RasterYSize)),
+        ("upperRight", (dataset.RasterXSize, 0)),
+        ("lowerRight", (dataset.RasterXSize, dataset.RasterYSize)),
+    ]:
         x, y = gdal.ApplyGeoTransform(geotransform, *coords)
         lon, lat, _ = transform.TransformPoint(x, y)
         corners_projected[name] = [lon, lat]
@@ -311,17 +307,17 @@ def pull_useful_gdal(dataset):
     #     'south_latitude': min(corners_projected['upperLeft'][1], corners_projected['lowerLeft'][1], corners_projected['upperRight'][1], corners_projected['lowerRight'][1])
     # }
     bbox = {
-        'west_longitude': corners_projected['upperLeft'][0],
-        'north_latitude': corners_projected['upperLeft'][1],
-        'east_longitude': corners_projected['lowerRight'][0],
-        'south_latitude': corners_projected['lowerRight'][1]
+        "west_longitude": corners_projected["upperLeft"][0],
+        "north_latitude": corners_projected["upperLeft"][1],
+        "east_longitude": corners_projected["lowerRight"][0],
+        "south_latitude": corners_projected["lowerRight"][1],
     }
     useful["bbox"] = bbox
     bbox = {
-        'west_longitude': corners['upperLeft'][0],
-        'north_latitude': corners['upperLeft'][1],
-        'east_longitude': corners['lowerRight'][0],
-        'south_latitude': corners['lowerRight'][1]
+        "west_longitude": corners["upperLeft"][0],
+        "north_latitude": corners["upperLeft"][1],
+        "east_longitude": corners["lowerRight"][0],
+        "south_latitude": corners["lowerRight"][1],
     }
     useful["bbox_noproj"] = bbox
 
@@ -329,6 +325,7 @@ def pull_useful_gdal(dataset):
     useful["espgEncoding"] = int(src_srs.GetAuthorityCode(None))
 
     return useful
+
 
 def pull_useful(
     ginfo,
@@ -348,12 +345,12 @@ path_to_file = pathname_for_year(2008)
 dataset = gdal.Open(path_to_file)
 useful_gdal = pull_useful_gdal(dataset)
 gdalInfoReq = " ".join(["gdalinfo", "-json", path_to_file])
-# print(gdalInfoReq[k])
+
 result = subprocess.run([gdalInfoReq], shell=True, capture_output=True, text=True)
-# print(result)
+
 print()
-# print(result.stdout)
-# print(result.stdout)
+
+
 print(result.stderr)
 gdalInfo = json.loads(result.stdout)
 
@@ -363,8 +360,7 @@ with open("gdal_process.json", "w") as outfile:
 with open("gdal_lib.json", "w") as outfile:
     json.dump(useful_gdal, outfile, indent=2, sort_keys=True)
 # exit()
-# print(json.dumps(useful, indent=2, sort_keys=True))
-# print(json.dumps(useful_gdal, indent=2, sort_keys=True))
+
 
 # <span style=color:blue>Function to transform from EPSG:4326 to EPSG:5070.  The rasterio-based function we use below will take coordinates in EPSG:5010, since the tif files we are using here are in EPSG:5010.     </span>
 
@@ -393,9 +389,9 @@ print(from_4326_to_5070(old_lon, old_lat))
 def get_coordinate_pixels(tiff_file, lon, lat):
     dataset = rasterio.open(tiff_file)
     lon_new, lat_new = from_4326_to_5070(lon, lat)
-    # print(lon_new,lat_new)
+
     py, px = dataset.index(lon_new, lat_new)
-    # print(py, px)
+
     # create 3px x 3px window centered on the lon-lat
     window = rasterio.windows.Window(px - 1, py - 1, 3, 3)
     clip = dataset.read(window=window)
@@ -763,7 +759,7 @@ print(corner_iowa_color_imgs_7_day)
 # <span style=color:blue>To plot first single-day image, we have to  get the values to be between 0 and 1.  In fact, we first scale to (0,1) but then multiply by 3.5 to brighten the picture    </span>
 
 ci_image_1_day = corner_iowa_color_imgs_1_day[0]
-print(f"Type of each value in ci_image_1_day: {ci_image.dtype}")
+print(f"Type of each value in ci_image_1_day: {ci_image_1_day.dtype}")
 
 # plot function
 # factor 1/255 to scale between 0-1
@@ -772,7 +768,7 @@ plot_image(ci_image_1_day, factor=3.5 / 255, clip_range=(0, 1))
 # <span style=color:blue>Let's look at how the 7-day interval turns out...   </span>
 
 ci_image_7_day = corner_iowa_color_imgs_7_day[0]
-print(f"Type of each value in ci_image_7_day: {ci_image.dtype}")
+print(f"Type of each value in ci_image_7_day: {ci_image_7_day.dtype}")
 
 # plot function
 # factor 1/255 to scale between 0-1
@@ -848,6 +844,5 @@ print("\nNVDI is: ", NVDI)
 
 print()
 
-# print(request_NVDI_corner)
-# print(request_NVDI_corner.get_data())
+
 # ### <span style=color:blue>Note: if you run the above request on point_iowa_box for "2022-08-01" to "2022-08-02", then you get [0,0].  I think this is because the satellite didn't go over this cell on that one day. Remember that with the two sentinel-2 satellites taken together there is a 5-day return rate. In general, one should probably make single-cell requests that are across a 5 day span, e.g., 2022-04-01 to 2022-04-06. </span>

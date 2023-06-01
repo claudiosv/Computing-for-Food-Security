@@ -7,10 +7,6 @@
 #
 
 
-# This useful if I want to give unique names to directories or files
-# This useful if I want to give unique names to directories or files
-# This useful if I want to give unique names to directories or files
-# This useful if I want to give unique names to directories or files
 import datetime
 import json
 import math
@@ -98,9 +94,9 @@ class c_usda_quick_stats:
 
         try:
             s_result = urllib.request.urlopen(full_url)
-            # print(type(s_result))
+
             print(s_result.status, s_result.reason)
-            # print(s_result.status_code)
+
             s_text = s_result.read().decode("utf-8")
 
             # Create the output file and write the CSV data records to the file.
@@ -154,492 +150,428 @@ archive_dir = "ML-ARCHIVES--v01/"
 # the line "'&' + urllib.parse.quote('unit_desc-ACRES')"
 # then the site responds saying that you have exceeded the 50,000 record limit for one query
 
-if False:
-    parameters = (
-        "source_desc=SURVEY"
-        + "&"
-        + urllib.parse.quote("sector_desc=FARMS & LANDS & ASSETS")
-        + "&"
-        + urllib.parse.quote("commodity_desc=FARM OPERATIONS")
-        + "&"
-        + urllib.parse.quote("statisticcat_desc=AREA OPERATED")
-        + "&unit_desc=ACRES"
-        + "&freq_desc=ANNUAL"
-        + "&reference_period_desc=YEAR"
-        + "&year__GE=1997"
-        + "&agg_level_desc=NATIONAL"
-        + "&"
-        + urllib.parse.quote("state_name=US TOTAL")
-        + "&format=CSV"
-    )
+parameters = (
+    "source_desc=SURVEY"
+    + "&"
+    + urllib.parse.quote("sector_desc=FARMS & LANDS & ASSETS")
+    + "&"
+    + urllib.parse.quote("commodity_desc=FARM OPERATIONS")
+    + "&"
+    + urllib.parse.quote("statisticcat_desc=AREA OPERATED")
+    + "&unit_desc=ACRES"
+    + "&freq_desc=ANNUAL"
+    + "&reference_period_desc=YEAR"
+    + "&year__GE=1997"
+    + "&agg_level_desc=NATIONAL"
+    + "&"
+    + urllib.parse.quote("state_name=US TOTAL")
+    + "&format=CSV"
+)
+farm_survey_1997_file = "national_farm_survey_acres_ge_1997_" + curr_timestamp() + ".csv"
 
+if not Path(farm_survey_1997_file).exists():
     stats = c_usda_quick_stats()
-
     s_json = stats.get_data(
         parameters,
         output_dir,
-        "national_farm_survey_acres_ge_1997_" + curr_timestamp() + ".csv",
+        farm_survey_1997_file,
     )
+# <span style=color:blue>Now a query that fetches useful soybean yield data.  I am focused on the top 7 soy-producing states in the US, and on the years 2003 to 2022.   </span>
+# Create a string with search parameters, then create an instance of
+# the c_usda_quick_stats class and use that to fetch data from QuickStats
+# and write it to a file
+# It took a while to get the parameter names just right...
+#   The parameters names are listed in
+#      https://quickstats.nass.usda.gov/param_define
+#   (some additional resources in https://quickstats.nass.usda.gov/tutorials)
+#   Also, look at the column names that show up in the csv files that you get back
+parameters = (
+    "source_desc=SURVEY"
+    + "&sector_desc=CROPS"
+    + "&"
+    + urllib.parse.quote("group_desc=FIELD CROPS")
+    + "&commodity_desc=SOYBEANS"
+    + "&statisticcat_desc=YIELD"
+    + "&geographic_level=STATE"
+    + "&agg_level_desc=COUNTY"
+    + "&state_name=ILLINOIS"
+    + "&state_name=IOWA"
+    + "&state_name=MINNESTOTA"
+    + "&state_name=INDIANA"
+    + "&state_name=OHIO"
+    + "&state_name=NEBRASKA"
+    + "&state_name=MISSOURI"
+    + "&year__GE=2003"
+    + "&year__LE=2022"
+    + "&format=CSV"
+)
+stats = c_usda_quick_stats()
+# holding this timestamp; we may used it to import the created csv file
+latest_curr_timestamp = curr_timestamp()
+filename = "soybean_yield_data__" + latest_curr_timestamp + ".csv"
+if not Path(filename).exists():
+    stats.get_data(parameters, output_dir, filename)
+# ### <span style=color:blue>After inspecting the output we see that there is double counting.  In particular, see the columns for "short_desc".  So, we will drop all records with short_desc != "SOYBEANS - YIELD, MEASURED IN BU / ACRE"</span>
+df = pd.read_csv(output_dir + filename)
 
-    # <span style=color:blue>Now a query that fetches useful soybean yield data.  I am focused on the top 7 soy-producing states in the US, and on the years 2003 to 2022.   </span>
+df1 = df[["short_desc"]].drop_duplicates()
+print(df1.head(10))
+# keep only records about full yield
+df = df[df["short_desc"] == "SOYBEANS - YIELD, MEASURED IN BU / ACRE"]
+print(len(df))
+# 10295
+# found some bad_county_names by visual inspection of the csv
+bad_county_names = ["OTHER COUNTIES", "OTHER (COMBINED) COUNTIES"]
+df = df[~df.county_name.isin(bad_county_names)]
+print(len(df))
+# 9952
+df2 = df[["state_name", "county_name"]].drop_duplicates()
+print(len(df2))
+# 559
+# Note: using SQL I found that of the 559 state-county pairs total:
+#          212 state-county pairs have data for all 20 years
+#          347 state-county pairs have data for < 20 years
+#
+#          486 have year 2022
+#          418 have year 2021
+#          514 have year 2020
+# I will live with that
+# cleaning up a column name
+df = df.rename(columns={"Value": "yield"})
+output_file = "repaired_yield__" + curr_timestamp() + ".csv"
+df.to_csv(output_dir + output_file, index=False)
+# I imported this table into postgres so that I could use SQL ...
+# #### <span style=color:blue>Saving the csv I'm happy with in a designated place in my "archives" directory</span>
+output_dir = "USDA-NASS--v01/OUTPUTS/"
+archives_dir = "ML-ARCHIVES--v01/"
+src_file = output_file  # from preceding cell
+tgt_file = "soybean_yield_data.csv"
+shutil.copyfile(output_dir + src_file, archives_dir + tgt_file)
+# #### <span style=color:blue>Projecting out the columns and records that I don't need for my ML learning table, and archiving that result, also. </span>
+tgt_file = "soybean_yield_data.csv"
+df = pd.read_csv(archives_dir + tgt_file)
 
-    # Create a string with search parameters, then create an instance of
-    # the c_usda_quick_stats class and use that to fetch data from QuickStats
-    # and write it to a file
-
-    # It took a while to get the parameter names just right...
-    #   The parameters names are listed in
-    #      https://quickstats.nass.usda.gov/param_define
-    #   (some additional resources in https://quickstats.nass.usda.gov/tutorials)
-    #   Also, look at the column names that show up in the csv files that you get back
-    parameters = (
-        "source_desc=SURVEY"
-        + "&sector_desc=CROPS"
-        + "&"
-        + urllib.parse.quote("group_desc=FIELD CROPS")
-        + "&commodity_desc=SOYBEANS"
-        + "&statisticcat_desc=YIELD"
-        + "&geographic_level=STATE"
-        + "&agg_level_desc=COUNTY"
-        + "&state_name=ILLINOIS"
-        + "&state_name=IOWA"
-        + "&state_name=MINNESTOTA"
-        + "&state_name=INDIANA"
-        + "&state_name=OHIO"
-        + "&state_name=NEBRASKA"
-        + "&state_name=MISSOURI"
-        + "&year__GE=2003"
-        + "&year__LE=2022"
-        + "&format=CSV"
-    )
-
-    stats = c_usda_quick_stats()
-
-    # holding this timestamp; we may used it to import the created csv file
-    latest_curr_timestamp = curr_timestamp()
-    filename = "soybean_yield_data__" + latest_curr_timestamp + ".csv"
-
-    stats.get_data(
-        parameters, output_dir, "soybean_yield_data__" + latest_curr_timestamp + ".csv"
-    )
-
-    # ### <span style=color:blue>After inspecting the output we see that there is double counting.  In particular, see the columns for "short_desc".  So, we will drop all records with short_desc != "SOYBEANS - YIELD, MEASURED IN BU / ACRE"</span>
-
-    df = pd.read_csv(output_dir + filename)
-    # print(df.head())
-
-    df1 = df[["short_desc"]].drop_duplicates()
-    print(df1.head(10))
-
-    # keep only records about full yield
-    df = df[df["short_desc"] == "SOYBEANS - YIELD, MEASURED IN BU / ACRE"]
-    print(len(df))
-    # 10295
-
-    # found some bad_county_names by visual inspection of the csv
-    bad_county_names = ["OTHER COUNTIES", "OTHER (COMBINED) COUNTIES"]
-    df = df[~df.county_name.isin(bad_county_names)]
-
-    print(len(df))
-    # 9952
-
-    df2 = df[["state_name", "county_name"]].drop_duplicates()
-    print(len(df2))
-    # 559
-
-    # Note: using SQL I found that of the 559 state-county pairs total:
-    #          212 state-county pairs have data for all 20 years
-    #          347 state-county pairs have data for < 20 years
-    #
-    #          486 have year 2022
-    #          418 have year 2021
-    #          514 have year 2020
-    # I will live with that
-
-    # cleaning up a column name
-    df = df.rename(columns={"Value": "yield"})
-
-    output_file = "repaired_yield__" + curr_timestamp() + ".csv"
-
-    df.to_csv(output_dir + output_file, index=False)
-
-    # I imported this table into postgres so that I could use SQL ...
-
-    # #### <span style=color:blue>Saving the csv I'm happy with in a designated place in my "archives" directory</span>
-
-    output_dir = "USDA-NASS--v01/OUTPUTS/"
-    archives_dir = "ML-ARCHIVES--v01/"
-    src_file = output_file  # from preceding cell
-    tgt_file = "soybean_yield_data.csv"
-
-    shutil.copyfile(output_dir + src_file, archives_dir + tgt_file)
-
-    # #### <span style=color:blue>Projecting out the columns and records that I don't need for my ML learning table, and archiving that result, also. </span>
-
-    tgt_file = "soybean_yield_data.csv"
-
-    df = pd.read_csv(archives_dir + tgt_file)
-    # print(df.head())
-
-    cols_to_keep = ["year", "state_name", "county_name", "yield"]
-    dfml = df[cols_to_keep]
-
-    print(dfml.head())
-
-    print(dfml.shape[0])
-    # Note: this particular df has 9952 rows
-
-    # checking there are no null values for 'yield':
-    print(dfml[dfml["yield"].isnull()].head())
-
-    tgt_file_01 = "year_state_county_yield.csv"
-    dfml.to_csv(archives_dir + tgt_file_01, index=False)
-    print("\nwrote file ", archives_dir + tgt_file_01)
-
-    #!/usr/bin/env python
-    # coding: utf-8
-
-    # ## <span style=color:blue>Fetching the more-or-less central lat lon for each county/state pair of interest in our ML pipeline    </span>
-    #
-
-    def curr_timestamp():
-        current_datetime = datetime.datetime.now()
-        formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-        return formatted_datetime
-
-    # <span style=color:blue>The year_state_county_yield.csv file holds all of the year-county-state triples of interest along with total soybean yield.</span>
-
-    archives_dir = "ML-ARCHIVES--v01/"
-    file = "year_state_county_yield.csv"
-
-    df = pd.read_csv(archives_dir + file)
-    print("number of rows in csv cleaned for ML: ", len(df))
-
-    print(df.head())
-
-    df1 = df[["state_name", "county_name"]].drop_duplicates()
-    print("\nNumber of state-county pairs is: ", len(df1))
-
-    # <span style=color:blue>The function geocode_county defined below won't work on "DU PAGE" county in Illinois.  But it does work on "DUPAGE".  So, changing the name in both df and df1 </span>
-
-    index = df.index[
-        (df["county_name"] == "DU PAGE") | (df["county_name"] == "DUPAGE")
-    ].tolist()
-    print(index)
-    for ind in index:
-        df.at[ind, "county_name"] = "DUPAGE"
-        print(df.at[ind, "county_name"])
-
-    index1 = df1.index[
-        (df1["county_name"] == "DU PAGE") | (df1["county_name"] == "DUPAGE")
-    ].tolist()
-    print(index1)
-    for ind in index1:
-        df1.at[ind, "county_name"] = "DUPAGE"
-        print(df1.at[ind, "county_name"])
-
-    # Geocoding function to retrieve coordinates for a county
-    def geocode_county(state, county):
-        geolocator = Nominatim(user_agent="county_geocoder")
-        location = geolocator.geocode(county + ", " + state + ", USA")
-        sleep(0.5)
-        if location:
-            return location.longitude, location.latitude
-        else:
-            print("no lat-lon found for ", state, county)
-            return None, None
-
-    df1[["lon", "lat"]] = df1.apply(
-        lambda x: geocode_county(x["state_name"], x["county_name"]),
-        axis=1,
-        result_type="expand",
-    )
-    # df1['lat'] = df1.apply(lambda x: geocode_county(x['state_name'], x['county_name'])[1], axis=1)
-
-    print(df1.head())
-
-    print("lon-lat for ILLINOIS-BUREAU is: ", geocode_county("ILLINOIS", "BUREAU"))
-
-    # <span style=color:blue>Archiving df1 for later use </span>
-
-    archives_dir = "ML-ARCHIVES--v01/"
-    filename = "state_county_lon_lat.csv"
-    df1.to_csv(archives_dir + filename, index=False)
-    print("wrote file: ", archives_dir + filename)
+cols_to_keep = ["year", "state_name", "county_name", "yield"]
+dfml = df[cols_to_keep]
+print(dfml.head())
+print(dfml.shape[0])
+# Note: this particular df has 9952 rows
+# checking there are no null values for 'yield':
+print(dfml[dfml["yield"].isnull()].head())
+tgt_file_01 = "year_state_county_yield.csv"
+dfml.to_csv(archives_dir + tgt_file_01, index=False)
+print("\nwrote file ", archives_dir + tgt_file_01)
 
 
+# ## <span style=color:blue>Fetching the more-or-less central lat lon for each county/state pair of interest in our ML pipeline    </span>
 
-    #!/usr/bin/env python
-    # coding: utf-8
-    # ## <span style=color:blue>Fetching GAEZ soil data for an ML pipeline</span>
-    #
-    # ###  <span style=color:blue>Note: rather than using GAEZ, you might want to use the ISRIC soil data. </span>
-    #
-    # <span style=color:blue>E.g., see https://soilgrids.org and https://www.isric.org/explore/soilgrids/faq-soilgrids.  (It may take some digging around to make things work.  You probably want to use the EPSG:4326 (Plate Carre) projection.) Also, if you are working with yield data at the county level, then you might want to use soil grid data at the 5k x 5k gridsize, rather than then 1km x 1km or 250m x 250m gridsize. </span>
-    def curr_timestamp():
-        current_datetime = datetime.datetime.now()
-        formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-        return formatted_datetime
-
-
-    # ### <span style=color:blue>Fetching the file state_county_lon_lat.csv which will be used below</span>
-    scll_filename = "state_county_lon_lat.csv"
-    df_scll = pd.read_csv(archive_dir + scll_filename)
-    print(df_scll.head())
-    print(len(df_scll))
-    # ### <span style=color:blue>Fetching several .tif files using urllib.</span>
-    #
-    # <span style=color:blue>I selected this by visual inspection of various GAEZ data sets.  I was looking for data based on soil that appeared to differentiate parts of my region of interest.</span>
-    #
-    # ### <span style=color:blue>Note: for the 1st, 3rd and 4th tif files fetched below, the pixel values are categorical.  So we will have to use one-hot encodings for these</span>
-    tif_dir = "GAEZ-SOIL-for-ML/OUTPUTS/"
-    os.makedirs(tif_dir, exist_ok=True)
-    url = {}
-    # using Land and Water Resources / Dominant AEZ class (33 classes) at 5 arc-minutes
-    # Based on 33 AEZ classes, even though pixel values are integer
-    url[
-        "AEZ_classes"
-    ] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/aez/aez_v9v2red_5m_CRUTS32_Hist_8110_100_avg.tif"
-    # Using the URL of TIF file Soil Resources / Nutrient retention capacity, high inputs
-    # Based on 1 to 10, corresponding to bands 0.0 to 0.1; 0.1 to 02; etc.  So basically a numeric parameter
-    url[
-        "nutr_ret_high"
-    ] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ2_mze_v9aH.tif"
-    # using Land and Water Resources / Soil Resources / Most limiting soil quality rating factor, high inputs
-    # Based on 11 soil categories (and water), even though pixel values are integer
-    url[
-        "soil_qual_high"
-    ] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ0_mze_v9aH.tif"
-    # using Land and Water Resources / Soil Resources / Most limiting soil quality rating factor, low inputs
-    # same as previous
-    url[
-        "soil_qual_low"
-    ] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ0_mze_v9aL.tif"
-    # Leaving this one out because it is 43200 x 21600 pixels; don't want to work with different size input for now...
-    # using Land and Water Resources / Soil suitability, rain-fed, low-inputs
-    # url['soil_suit_rain_low'] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi2/siLr_sss_mze.tif"
-    # using Suitability and Attainable Yield / Suitability Index / Suitability index range (0-10000);
-    #   within this chose crop = soybean; time period = 1981 to 2010; others empty
-    # this has numeric values from 0 to 10,000
-    url[
-        "suit_irrig_high_soy"
-    ] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/8110H/suHi_soy.tif"
-    urlkeys = url.keys()
-    print(urlkeys)
-    # Fetch the TIF files using the associated URLs
-    curr = curr_timestamp()
-    fileFullName = {}
+# <span style=color:blue>The year_state_county_yield.csv file holds all of the year-county-state triples of interest along with total soybean yield.</span>
+archives_dir = "ML-ARCHIVES--v01/"
+file = "year_state_county_yield.csv"
+df = pd.read_csv(archives_dir + file)
+print("number of rows in csv cleaned for ML: ", len(df))
+print(df.head())
+df1 = df[["state_name", "county_name"]].drop_duplicates()
+print("\nNumber of state-county pairs is: ", len(df1))
+# <span style=color:blue>The function geocode_county defined below won't work on "DU PAGE" county in Illinois.  But it does work on "DUPAGE".  So, changing the name in both df and df1 </span>
+index = df.index[
+    (df["county_name"] == "DU PAGE") | (df["county_name"] == "DUPAGE")
+].tolist()
+print(index)
+for ind in index:
+    df.at[ind, "county_name"] = "DUPAGE"
+    print(df.at[ind, "county_name"])
+index1 = df1.index[
+    (df1["county_name"] == "DU PAGE") | (df1["county_name"] == "DUPAGE")
+].tolist()
+print(index1)
+for ind in index1:
+    df1.at[ind, "county_name"] = "DUPAGE"
+    print(df1.at[ind, "county_name"])
 
 
-    # fetching the tif files from web and writing into local files
-    for k in urlkeys:
-        fileFullName[k] = tif_dir + curr + "__" + k + ".tif"
-        print(fileFullName[k])
-        urllib.request.urlretrieve(url[k], fileFullName[k])
-    # ### <span style=color:blue>Fetching meta-data about the .tif files using GDAL, specifically the command-line operator gdalinfo.</span>
-    def pull_useful(
-        ginfo,
-    ):  # should give as input the result.stdout from calling gdalinfo -json
-        useful = {}
-        useful["band_count"] = len(ginfo["bands"])
-        # useful['cornerCoordinates'] = ginfo['cornerCoordinates']
-        # useful['proj:transform'] = ginfo['stac']['proj:transform']
-        useful["size"] = ginfo["size"]
-        # useful['bbox'] = ginfo['stac']['proj:projjson']['bbox']
-        # useful['espgEncoding'] = ginfo['stac']['proj:epsg']
-        return useful
+# Geocoding function to retrieve coordinates for a county
+def geocode_county(state, county):
+    geolocator = Nominatim(user_agent="county_geocoder")
+    location = geolocator.geocode(county + ", " + state + ", USA")
+    sleep(0.5)
+    if location:
+        return location.longitude, location.latitude
+    else:
+        print("no lat-lon found for ", state, county)
+        return None, None
 
 
-    gdalInfoReq = {}
-    gdalInfo = {}
+df1[["lon", "lat"]] = df1.apply(
+    lambda x: geocode_county(x["state_name"], x["county_name"]),
+    axis=1,
+    result_type="expand",
+)
+# df1['lat'] = df1.apply(lambda x: geocode_county(x['state_name'], x['county_name'])[1], axis=1)
+print(df1.head())
+print("lon-lat for ILLINOIS-BUREAU is: ", geocode_county("ILLINOIS", "BUREAU"))
+# <span style=color:blue>Archiving df1 for later use </span>
+archives_dir = "ML-ARCHIVES--v01/"
+filename = "state_county_lon_lat.csv"
+df1.to_csv(archives_dir + filename, index=False)
+print("wrote file: ", archives_dir + filename)
+
+
+# ## <span style=color:blue>Fetching GAEZ soil data for an ML pipeline</span>
+#
+# ###  <span style=color:blue>Note: rather than using GAEZ, you might want to use the ISRIC soil data. </span>
+#
+# <span style=color:blue>E.g., see https://soilgrids.org and https://www.isric.org/explore/soilgrids/faq-soilgrids.  (It may take some digging around to make things work.  You probably want to use the EPSG:4326 (Plate Carre) projection.) Also, if you are working with yield data at the county level, then you might want to use soil grid data at the 5k x 5k gridsize, rather than then 1km x 1km or 250m x 250m gridsize. </span>
+
+# ### <span style=color:blue>Fetching the file state_county_lon_lat.csv which will be used below</span>
+scll_filename = "state_county_lon_lat.csv"
+df_scll = pd.read_csv(archive_dir + scll_filename)
+print(df_scll.head())
+print(len(df_scll))
+# ### <span style=color:blue>Fetching several .tif files using urllib.</span>
+#
+# <span style=color:blue>I selected this by visual inspection of various GAEZ data sets.  I was looking for data based on soil that appeared to differentiate parts of my region of interest.</span>
+#
+# ### <span style=color:blue>Note: for the 1st, 3rd and 4th tif files fetched below, the pixel values are categorical.  So we will have to use one-hot encodings for these</span>
+tif_dir = "GAEZ-SOIL-for-ML/OUTPUTS/"
+os.makedirs(tif_dir, exist_ok=True)
+url = {}
+# using Land and Water Resources / Dominant AEZ class (33 classes) at 5 arc-minutes
+# Based on 33 AEZ classes, even though pixel values are integer
+url[
+    "AEZ_classes"
+] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/aez/aez_v9v2red_5m_CRUTS32_Hist_8110_100_avg.tif"
+# Using the URL of TIF file Soil Resources / Nutrient retention capacity, high inputs
+# Based on 1 to 10, corresponding to bands 0.0 to 0.1; 0.1 to 02; etc.  So basically a numeric parameter
+url[
+    "nutr_ret_high"
+] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ2_mze_v9aH.tif"
+# using Land and Water Resources / Soil Resources / Most limiting soil quality rating factor, high inputs
+# Based on 11 soil categories (and water), even though pixel values are integer
+url[
+    "soil_qual_high"
+] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ0_mze_v9aH.tif"
+# using Land and Water Resources / Soil Resources / Most limiting soil quality rating factor, low inputs
+# same as previous
+url[
+    "soil_qual_low"
+] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ0_mze_v9aL.tif"
+# Leaving this one out because it is 43200 x 21600 pixels; don't want to work with different size input for now...
+# using Land and Water Resources / Soil suitability, rain-fed, low-inputs
+# url['soil_suit_rain_low'] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi2/siLr_sss_mze.tif"
+# using Suitability and Attainable Yield / Suitability Index / Suitability index range (0-10000);
+#   within this chose crop = soybean; time period = 1981 to 2010; others empty
+# this has numeric values from 0 to 10,000
+url[
+    "suit_irrig_high_soy"
+] = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/8110H/suHi_soy.tif"
+urlkeys = url.keys()
+print(urlkeys)
+# Fetch the TIF files using the associated URLs
+curr = curr_timestamp()
+fileFullName = {}
+# fetching the tif files from web and writing into local files
+for k in urlkeys:
+    fileFullName[k] = tif_dir + curr + "__" + k + ".tif"
+    print(fileFullName[k])
+    urllib.request.urlretrieve(url[k], fileFullName[k])
+
+
+# ### <span style=color:blue>Fetching meta-data about the .tif files using GDAL, specifically the command-line operator gdalinfo.</span>
+def pull_useful(
+    ginfo,
+):  # should give as input the result.stdout from calling gdalinfo -json
     useful = {}
-    for k in urlkeys:
-        gdalInfoReq[k] = " ".join(["gdalinfo", "-json", fileFullName[k]])
-        # print(gdalInfoReq[k])
-        result = subprocess.run(
-            [gdalInfoReq[k]], shell=True, capture_output=True, text=True
-        )
-        gdalInfo[k] = json.loads(result.stdout)
-        # if k == 'AEZ_classes':
-        #     print(json.dumps(gdalInfo[k], indent=2, sort_keys=True))
-        useful[k] = pull_useful(gdalInfo[k])
-        print("\n", k)
-        print(json.dumps(useful[k], indent=2, sort_keys=True))
+    useful["band_count"] = len(ginfo["bands"])
+    # useful['cornerCoordinates'] = ginfo['cornerCoordinates']
+    # useful['proj:transform'] = ginfo['stac']['proj:transform']
+    useful["size"] = ginfo["size"]
+    # useful['bbox'] = ginfo['stac']['proj:projjson']['bbox']
+    # useful['espgEncoding'] = ginfo['stac']['proj:epsg']
+    return useful
 
 
-    # <span style=color:blue>Function to pull value from a pixel.  (Thanks to Claudio Spiess)   </span>
-    # following https://gis.stackexchange.com/a/299791, adapted to fetch just one pixel
-    def get_coordinate_pixel(tiff_file, lon, lat):
-        dataset = rasterio.open(tiff_file)
-        py, px = dataset.index(lon, lat)
-        # create 1x1px window of the pixel
-        window = rasterio.windows.Window(px, py, 1, 1)
-        # read rgb values of the window
-        clip = dataset.read(window=window)
-        # print(clip)
-        return clip[0][0][0]
+gdalInfoReq = {}
+gdalInfo = {}
+useful = {}
+for k in urlkeys:
+    gdalInfoReq[k] = " ".join(["gdalinfo", "-json", fileFullName[k]])
+
+    result = subprocess.run(
+        [gdalInfoReq[k]], shell=True, capture_output=True, text=True
+    )
+    gdalInfo[k] = json.loads(result.stdout)
+    # if k == 'AEZ_classes':
+    #     print(json.dumps(gdalInfo[k], indent=2, sort_keys=True))
+    useful[k] = pull_useful(gdalInfo[k])
+    print("\n", k)
+    print(json.dumps(useful[k], indent=2, sort_keys=True))
 
 
-    # testing the function
-    tiff_file = fileFullName["AEZ_classes"]
-    # tiff_file = 'GAEZ-SOIL-for-ML/OUTPUTS/2023-05-20_23-09-36__AEZ_classes.tif'
-    print(df_scll.iloc[[0]])
-    test_lon = df_scll.iloc[0]["lon"]
-    test_lat = df_scll.iloc[0]["lat"]
-    print(test_lon, test_lat, type(test_lon), type(test_lat))
-    val = get_coordinate_pixel(tiff_file, test_lon, test_lat)
-    print(type(val))
-    print(val)
-    # ## <span style=color:blue>Now adding all 5 soil values to the rows of df_scll.  This takes a while to run. </span>
-    #
-    # <span style=color:blue>With the rasterio function, the retrieved values are of type int.  If using the gdalinfo-based fucntion, then the values coming from the XML are all strings, one should convert to int when loading into the new df that we are building</span>
-    df3 = df_scll.copy()
-    print(df3.head())
-    print(len(df3))
-    for k in urlkeys:
-        #     df3[k] = df3.apply(lambda r: fetch_tif_value(r['lon'], r['lat'], k, False), axis=1)
-        tiff_file = fileFullName[k]
-        df3[k] = df3.apply(
-            lambda r: get_coordinate_pixel(tiff_file, r["lon"], r["lat"]), axis=1
-        )
-    print(df3.head())
-    print(len(df3))
-    # <span style=color:blue>Looking at full set of values for each of the soil attributes.</span>
-    for k in urlkeys:
-        print(k)
-        print(df3[[k]].drop_duplicates().head(100))
-    # ## <span style=color:blue>Replacing the columns for 'AEZ_classes', 'soil_qual_high', 'soil_qual_low' with multiple "1-hot" columns.   (We could also use the OneHotEncoder from scikit, but I'm choosing to do it here and now on the raw data.)</span>
-    #
-    # <span style=color:blue>Following https://stackoverflow.com/questions/37292872/how-can-i-one-hot-encode-in-python</span>
-    #
-    #
-    df4 = df3.copy()
-    # Get one hot encoding of columns 'AEZ-classes'
-    one_hot = pd.get_dummies(df4["AEZ_classes"])
-    # Drop original as it is now encoded
-    df4 = df4.drop("AEZ_classes", axis=1)
-    # Join the encoded df
-    df4 = df4.join(one_hot)
-    print(len(df4))
-    print(df4.head())
-    print(df4.columns.tolist())
-    # output was ['state_name', 'county_name', 'lon', 'lat', 'nutr_ret_high',
-    #             'soil_qual_high', 'soil_qual_low', 'suit_irrig_high_soy',
-    #              16, 17, 18, 19, 20, 21, 27, 28, 32]
-    cols = {
-        16: "AEZ_1",
-        17: "AEZ_2",
-        18: "AEZ_3",
-        19: "AEZ_4",
-        20: "AEZ_5",
-        21: "AEZ_6",
-        27: "AEZ_7",
-        28: "AEZ_8",
-        32: "AEZ_9",
-    }
-    df4 = df4.rename(columns=cols)
-    print(df4.columns.tolist())
-    print(df4.head())
-    # making a copy of df4, because may run this cell a couple of times as I develop it
-    df5 = df4.copy()
-    # Get one hot encoding of columns 'soil_qual_high'
-    one_hot1 = pd.get_dummies(df5["soil_qual_high"])
-    # Drop original as it is now encoded
-    df5 = df5.drop("soil_qual_high", axis=1)
-    # Join the encoded df
-    df5 = df5.join(one_hot1)
-    print(len(df5))
-    print(df5.head())
-    print(df5.columns.tolist())
-    # output was ['state_name', 'county_name', 'lon', 'lat', 'nutr_ret_high',
-    #             'soil_qual_low', 'suit_irrig_high_soy', 'AEZ_1', 'AEZ_2', 'AEZ_3',
-    #             'AEZ_4', 'AEZ_5', 'AEZ_6', 'AEZ_7', 'AEZ_8', 'AEZ_9',
-    #             4, 5, 6, 7, 8, 9, 10]
-    cols = {
-        4: "SQH_1",
-        5: "SQH_2",
-        6: "SQH_3",
-        7: "SQH_4",
-        8: "SQH_5",
-        9: "SQH_6",
-        10: "SQH_7",
-    }
-    df5 = df5.rename(columns=cols)
-    print(df5.columns.tolist())
-    print(df5.head())
-    # making a copy of df5, because may run this cell a couple of times as I develop it
-    df6 = df5.copy()
-    # Get one hot encoding of columns 'soil_qual_low'
-    one_hot2 = pd.get_dummies(df6["soil_qual_low"])
-    # Drop original as it is now encoded
-    df6 = df6.drop("soil_qual_low", axis=1)
-    # Join the encoded df
-    df6 = df6.join(one_hot2)
-    print(len(df6))
-    print(df6.head())
-    print(df6.columns.tolist())
-    # output was ['state_name', 'county_name', 'lon', 'lat', 'nutr_ret_high',
-    #             'suit_irrig_high_soy', 'AEZ_1', 'AEZ_2', 'AEZ_3', 'AEZ_4',
-    #             'AEZ_5', 'AEZ_6', 'AEZ_7', 'AEZ_8', 'AEZ_9',
-    #             'SQH_1', 'SQH_2', 'SQH_3', 'SQH_4', 'SQH_5', 'SQH_6', 'SQH_7',
-    #              4, 5, 6, 7, 8, 9, 10]
-    cols = {
-        4: "SQL_1",
-        5: "SQL_2",
-        6: "SQL_3",
-        7: "SQL_4",
-        8: "SQL_5",
-        9: "SQL_6",
-        10: "SQL_7",
-    }
-    df6 = df6.rename(columns=cols)
-    print(df6.columns.tolist())
-    print(df6.head())
-    # <span style=color:blue>Archiving this df     </span>
-    archives_dir = "ML-ARCHIVES--v01/"
-    filename = "state_county_lon_lat_soil.csv"
-    df6.to_csv(archives_dir + filename, index=False)
-    print("wrote file: ", archives_dir + filename)
+# <span style=color:blue>Function to pull value from a pixel.  (Thanks to Claudio Spiess)   </span>
+# following https://gis.stackexchange.com/a/299791, adapted to fetch just one pixel
+def get_coordinate_pixel(tiff_file, lon, lat):
+    dataset = rasterio.open(tiff_file)
+    py, px = dataset.index(lon, lat)
+    # create 1x1px window of the pixel
+    window = rasterio.windows.Window(px, py, 1, 1)
+    # read rgb values of the window
+    clip = dataset.read(window=window)
+
+    return clip[0][0][0]
 
 
-    #!/usr/bin/env python
-    # coding: utf-8
-    # ## <span style=color:blue>Fetching weather data from NASA POWER </span>
-    #
-    # <span style=color:blue>Start by merging year_state_county_yield.csv and state_county_lon_lat.csv into a df.  Will use this below as the backbone for fetching and formating the weather data</span>
-    def curr_timestamp():
-        current_datetime = datetime.datetime.now()
-        formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-        return formatted_datetime
+# testing the function
+tiff_file = fileFullName["AEZ_classes"]
+# tiff_file = 'GAEZ-SOIL-for-ML/OUTPUTS/2023-05-20_23-09-36__AEZ_classes.tif'
+print(df_scll.iloc[[0]])
+test_lon = df_scll.iloc[0]["lon"]
+test_lat = df_scll.iloc[0]["lat"]
+print(test_lon, test_lat, type(test_lon), type(test_lat))
+val = get_coordinate_pixel(tiff_file, test_lon, test_lat)
+print(type(val))
+print(val)
+# ## <span style=color:blue>Now adding all 5 soil values to the rows of df_scll.  This takes a while to run. </span>
+#
+# <span style=color:blue>With the rasterio function, the retrieved values are of type int.  If using the gdalinfo-based fucntion, then the values coming from the XML are all strings, one should convert to int when loading into the new df that we are building</span>
+df3 = df_scll.copy()
+print(df3.head())
+print(len(df3))
+for k in urlkeys:
+    #     df3[k] = df3.apply(lambda r: fetch_tif_value(r['lon'], r['lat'], k, False), axis=1)
+    tiff_file = fileFullName[k]
+    df3[k] = df3.apply(
+        lambda r: get_coordinate_pixel(tiff_file, r["lon"], r["lat"]), axis=1
+    )
+print(df3.head())
+print(len(df3))
+# <span style=color:blue>Looking at full set of values for each of the soil attributes.</span>
+for k in urlkeys:
+    print(k)
+    print(df3[[k]].drop_duplicates().head(100))
+# ## <span style=color:blue>Replacing the columns for 'AEZ_classes', 'soil_qual_high', 'soil_qual_low' with multiple "1-hot" columns.   (We could also use the OneHotEncoder from scikit, but I'm choosing to do it here and now on the raw data.)</span>
+#
+# <span style=color:blue>Following https://stackoverflow.com/questions/37292872/how-can-i-one-hot-encode-in-python</span>
+#
+#
+df4 = df3.copy()
+# Get one hot encoding of columns 'AEZ-classes'
+one_hot = pd.get_dummies(df4["AEZ_classes"])
+# Drop original as it is now encoded
+df4 = df4.drop("AEZ_classes", axis=1)
+# Join the encoded df
+df4 = df4.join(one_hot)
+print(len(df4))
+print(df4.head())
+print(df4.columns.tolist())
+# output was ['state_name', 'county_name', 'lon', 'lat', 'nutr_ret_high',
+#             'soil_qual_high', 'soil_qual_low', 'suit_irrig_high_soy',
+#              16, 17, 18, 19, 20, 21, 27, 28, 32]
+cols = {
+    16: "AEZ_1",
+    17: "AEZ_2",
+    18: "AEZ_3",
+    19: "AEZ_4",
+    20: "AEZ_5",
+    21: "AEZ_6",
+    27: "AEZ_7",
+    28: "AEZ_8",
+    32: "AEZ_9",
+}
+df4 = df4.rename(columns=cols)
+print(df4.columns.tolist())
+print(df4.head())
+# making a copy of df4, because may run this cell a couple of times as I develop it
+df5 = df4.copy()
+# Get one hot encoding of columns 'soil_qual_high'
+one_hot1 = pd.get_dummies(df5["soil_qual_high"])
+# Drop original as it is now encoded
+df5 = df5.drop("soil_qual_high", axis=1)
+# Join the encoded df
+df5 = df5.join(one_hot1)
+print(len(df5))
+print(df5.head())
+print(df5.columns.tolist())
+# output was ['state_name', 'county_name', 'lon', 'lat', 'nutr_ret_high',
+#             'soil_qual_low', 'suit_irrig_high_soy', 'AEZ_1', 'AEZ_2', 'AEZ_3',
+#             'AEZ_4', 'AEZ_5', 'AEZ_6', 'AEZ_7', 'AEZ_8', 'AEZ_9',
+#             4, 5, 6, 7, 8, 9, 10]
+cols = {
+    4: "SQH_1",
+    5: "SQH_2",
+    6: "SQH_3",
+    7: "SQH_4",
+    8: "SQH_5",
+    9: "SQH_6",
+    10: "SQH_7",
+}
+df5 = df5.rename(columns=cols)
+print(df5.columns.tolist())
+print(df5.head())
+# making a copy of df5, because may run this cell a couple of times as I develop it
+df6 = df5.copy()
+# Get one hot encoding of columns 'soil_qual_low'
+one_hot2 = pd.get_dummies(df6["soil_qual_low"])
+# Drop original as it is now encoded
+df6 = df6.drop("soil_qual_low", axis=1)
+# Join the encoded df
+df6 = df6.join(one_hot2)
+print(len(df6))
+print(df6.head())
+print(df6.columns.tolist())
+# output was ['state_name', 'county_name', 'lon', 'lat', 'nutr_ret_high',
+#             'suit_irrig_high_soy', 'AEZ_1', 'AEZ_2', 'AEZ_3', 'AEZ_4',
+#             'AEZ_5', 'AEZ_6', 'AEZ_7', 'AEZ_8', 'AEZ_9',
+#             'SQH_1', 'SQH_2', 'SQH_3', 'SQH_4', 'SQH_5', 'SQH_6', 'SQH_7',
+#              4, 5, 6, 7, 8, 9, 10]
+cols = {
+    4: "SQL_1",
+    5: "SQL_2",
+    6: "SQL_3",
+    7: "SQL_4",
+    8: "SQL_5",
+    9: "SQL_6",
+    10: "SQL_7",
+}
+df6 = df6.rename(columns=cols)
+print(df6.columns.tolist())
+print(df6.head())
+# <span style=color:blue>Archiving this df     </span>
+archives_dir = "ML-ARCHIVES--v01/"
+filename = "state_county_lon_lat_soil.csv"
+df6.to_csv(archives_dir + filename, index=False)
+print("wrote file: ", archives_dir + filename)
 
 
-    yscy_file = "year_state_county_yield.csv"
-    scll_file = "state_county_lon_lat.csv"
-    df_yscy = pd.read_csv(archive_dir + yscy_file)
-    df_scll = pd.read_csv(archive_dir + scll_file)
-    # Recall that when getting the lon-lat, I changed the name of "DU PAGE, ILLINOIS" to "DUPAGE, ILLINOIS"
-    # I will make the same name substitution in df_yscy
-    index_list = df_yscy.index[
-        (df_yscy["county_name"] == "DU PAGE") | (df_yscy["county_name"] == "DUPAGE")
-    ].tolist()
-    print(index_list)
-    for i in index_list:
-        df_yscy.at[i, "county_name"] = "DUPAGE"
-        print(df_yscy.at[i, "county_name"])
-    print(len(df_yscy), len(df_scll))
-    df_yscyll = pd.merge(df_yscy, df_scll, on=["state_name", "county_name"], how="left")
-    print(len(df_yscyll))
-    # print(df_yscyll.head(30))
-    # sanity check - that lon/lat's in new df correspond to the lon/lat's from table state_county_lon_lat.csv
-    print(df_yscyll[df_yscyll["year"] == 2022].head(10))
-    print(df_scll.head(10))
-    # checking on the DU PAGE county entries
-    print(df_yscyll.iloc[279:284].head())
-    yscyll_filename = "year_state_county_yield_lon_lat.csv"
-    df_yscyll.to_csv(archive_dir + yscyll_filename, index=False)
-    print("wrote file: ", archive_dir + yscyll_filename)
-else:
-    pass
+# ## <span style=color:blue>Fetching weather data from NASA POWER </span>
+#
+# <span style=color:blue>Start by merging year_state_county_yield.csv and state_county_lon_lat.csv into a df.  Will use this below as the backbone for fetching and formating the weather data</span>
+
+yscy_file = "year_state_county_yield.csv"
+scll_file = "state_county_lon_lat.csv"
+df_yscy = pd.read_csv(archive_dir + yscy_file)
+df_scll = pd.read_csv(archive_dir + scll_file)
+# Recall that when getting the lon-lat, I changed the name of "DU PAGE, ILLINOIS" to "DUPAGE, ILLINOIS"
+# I will make the same name substitution in df_yscy
+index_list = df_yscy.index[
+    (df_yscy["county_name"] == "DU PAGE") | (df_yscy["county_name"] == "DUPAGE")
+].tolist()
+print(index_list)
+for i in index_list:
+    df_yscy.at[i, "county_name"] = "DUPAGE"
+    print(df_yscy.at[i, "county_name"])
+print(len(df_yscy), len(df_scll))
+df_yscyll = pd.merge(df_yscy, df_scll, on=["state_name", "county_name"], how="left")
+print(len(df_yscyll))
+
+# sanity check - that lon/lat's in new df correspond to the lon/lat's from table state_county_lon_lat.csv
+print(df_yscyll[df_yscyll["year"] == 2022].head(10))
+print(df_scll.head(10))
+# checking on the DU PAGE county entries
+print(df_yscyll.iloc[279:284].head())
+yscyll_filename = "year_state_county_yield_lon_lat.csv"
+df_yscyll.to_csv(archive_dir + yscyll_filename, index=False)
+print("wrote file: ", archive_dir + yscyll_filename)
 yscyll_filename = "year_state_county_yield_lon_lat.csv"
 df_yscyll = pd.read_csv(archive_dir + yscyll_filename)
 
@@ -659,7 +591,7 @@ working_dir = 'NASA-POWER/OUTPUTS/'
 county_file = 'county_lat_long.csv'
 
 dfcty = pd.read_csv(working_dir + county_file)
-# print(dfcty.head())
+
 """
 
 # see https://gist.github.com/abelcallejo/d68e70f43ffa1c8c9f6b5e93010704b8
@@ -694,7 +626,6 @@ base_url += (
     "parameters=T2M_MAX,T2M_MIN,PRECTOTCORR,GWETROOT,EVPTRNS,ALLSKY_SFC_PAR_TOT&"
 )
 base_url += "community=RE&longitude={longitude}&latitude={latitude}&start={year}0401&end={year}1031&format=JSON"
-# print(base_url)
 
 
 def fetch_weather_county_year(year, state, county):
@@ -703,25 +634,16 @@ def fetch_weather_county_year(year, state, county):
         & (df_yscyll["county_name"] == county)
         & (df_yscyll["year"] == year)
     ]
-    # print(row)
-    # print(type(row))
+
     lon = row.iloc[0]["lon"]
     lat = row.iloc[0]["lat"]
-    # print(lon, lat)
+
     api_request_url = base_url.format(longitude=lon, latitude=lat, year=str(year))
 
     # this api request returns a json file
     response = requests.get(url=api_request_url, verify=True, timeout=30.00)
-    # print(response.status_code)
+
     content = json.loads(response.content.decode("utf-8"))
-
-    # print('\nType of content object is: ', type(content))
-    # print(json.dumps(content, indent=4))
-
-    # print('\nKeys of content dictionary are: \n', content.keys())
-    # print('\nKeys of "properties" sub-dictionary are: \n', content['properties'].keys())
-    # print('\nKeys of "parameter" sub-dictionary are: \n', content['properties']['parameter'].keys())
-    #
 
     weather = content["properties"]["parameter"]
 
@@ -757,19 +679,13 @@ filename = r"weather-data-for-index__{index}.csv"
 
 starttime = datetime.datetime.now().strftime("%Y-%m-% %H:%M:%S")
 
-# for i in range(0,len(df_yscyll)):
-# for i in range(278,280):    # had to fix issue of DU PAGE county...
-# for i in range(280,len(df_yscyll)):
-# for i in range(1779,1780):  # when running big loop it failed at 1779; but worked in this run; network issue?
-# for i in range(1779, len(df_yscyll)): # blocked at 2534
-# for i in range(2534,2535):    # when running big loop it failed at 1779; but worked in this run; network issue?
 for i in range(0, len(df_yscyll)):
     row = df_yscyll.iloc[i]
     outfilename = out_dir + filename.format(index=str(i).zfill(4))
 
     if Path(outfilename).exists():
         continue
-    # print(row)
+
     w_df[i] = fetch_weather_county_year(
         row["year"], row["state_name"], row["county_name"]
     )
@@ -878,15 +794,15 @@ print(cols_narrow)
 
 df_t1 = create_monthly_df(df_t0)  # dfw['0001']
 print(len(df_t1))
-# print(df_t1.head())
+
 
 cols_wide = []
 for i in range(0, len(df_t1)):
     row = df_t1.iloc[i]
-    # print(row)
+
     # can't use date, because it has year built in, and weeks start on different numbers...
     month_id = "month_" + str(i).zfill(2)
-    # print(date)
+
     for c in cols_narrow:
         cols_wide.append(month_id + "__" + c)
 
@@ -934,16 +850,14 @@ seqw = {}  # each entry will hold the "flattening" of the monthly aggregation df
 
 for i in range(0, len(df_yscyll)):
     padded = str(i).zfill(4)
-    # print(padded)
+
     u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
     # Want to have a name for the index of my dataframe
     u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
 
     dfw[padded] = create_monthly_df(u_df[padded])
-    # print(dfw.head())
 
     seqw[i] = create_weather_seq_for_monthly(dfw[padded])
-    # print(json.dumps(dictw, indent=4)
 
     # exceeding some I/O threshold
     if i % 30 == 0:
@@ -957,7 +871,6 @@ for i in range(0, len(df_yscyll)):
 
 
 # sanity check
-# print(json.dumps(seqw, indent=4))
 
 
 print(len(seqw))
@@ -989,7 +902,7 @@ sclls_file = "state_county_lon_lat_soil.csv"
 
 df_scsoil = pd.read_csv(archive_dir + sclls_file).drop(columns=["lon", "lat"])
 print(df_scsoil.shape)
-# print(df_scsoil.head())
+
 
 # will continue working with df_yscyll because updated DU PAGE county
 #     (and might update other things in future versions...)
@@ -1013,7 +926,7 @@ df_ysc_y_soil_weather_monthly = pd.concat(
 )
 
 print(df_ysc_y_soil_weather_monthly.shape)
-# print(df_ysc_y_soil_weather_monthly.head(10))
+
 print(df_ysc_y_soil_weather_monthly.loc[28:32, :])
 
 
@@ -1101,15 +1014,15 @@ print(cols_narrow)
 
 
 df_t1 = create_weekly_df(df_t0)  # dfw['0001']
-# print(df_t1.head())
+
 
 cols_wide = []
 for i in range(0, len(df_t1)):
     row = df_t1.iloc[i]
-    # print(row)
+
     # can't use date, because it has year built in, and weeks start on different numbers...
     week_id = "week_" + str(i).zfill(2)
-    # print(date)
+
     for c in cols_narrow:
         cols_wide.append(week_id + "__" + c)
 
@@ -1153,16 +1066,14 @@ seqw = {}
 
 for i in range(0, len(df_yscyll)):
     padded = str(i).zfill(4)
-    # print(padded)
+
     u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
     # Want to have a name for the index of my dataframe
     u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
 
     dfw[padded] = create_weekly_df(u_df[padded])
-    # print(dfw.head())
 
     seqw[i] = create_weather_seq(dfw[padded])
-    # print(json.dumps(dictw, indent=4)
 
     # exceeding some I/O threshold
     # if i % 30 == 0:
@@ -1201,7 +1112,6 @@ print(df_wide_weather_weekly_prelim.head())
 # <span style=color:blue>It is because for some years the 7 months end up creating 31 weeks whereas for others only 30 are created.  So we will simply drop week_31.  </span>
 
 
-# print(cols_wide_weekly)
 print(df_wide_weather_weekly_prelim.shape)
 week_31_cols = [
     "week_31__T2M_MAX",
@@ -1226,7 +1136,7 @@ sclls_file = "state_county_lon_lat_soil.csv"
 
 df_scsoil = pd.read_csv(archive_dir + sclls_file).drop(columns=["lon", "lat"])
 print(df_scsoil.shape)
-# print(df_scsoil.head())
+
 
 # will continue working with df_yscyll because updated DU PAGE county
 #     (and might update other things in future versions...)
@@ -1250,7 +1160,7 @@ df_ysc_y_soil_weather_weekly = pd.concat(
 )
 
 print(df_ysc_y_soil_weather_weekly.shape)
-# print(df_ysc_y_soil_weather_weekly.head(10))
+
 print(df_ysc_y_soil_weather_weekly.loc[28:32, :])
 
 
@@ -1300,9 +1210,6 @@ y = df_ml.loc[:, ["yield"]]
 
 print(X.shape)
 print(y.shape)
-
-# print(X.head())
-# print(y.head())
 
 
 # <span style=color:blue>Separating a training set from a testing set    </span>
@@ -1551,9 +1458,6 @@ y = df_ml.loc[:, ["yield"]]
 
 print(X.shape)
 print(y.shape)
-
-# print(X.head())
-# print(y.head())
 
 
 # <span style=color:blue>Separating a training set from a testing set    </span>
