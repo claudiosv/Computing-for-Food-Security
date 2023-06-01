@@ -364,18 +364,14 @@ if filename not in " ".join(archive_dirs):
     index = df.index[
         (df["county_name"] == "DU PAGE") | (df["county_name"] == "DUPAGE")
     ].tolist()
-    print(index)
     for ind in index:
         df.at[ind, "county_name"] = "DUPAGE"
-        print(df.at[ind, "county_name"])
 
     index1 = df1.index[
         (df1["county_name"] == "DU PAGE") | (df1["county_name"] == "DUPAGE")
     ].tolist()
-    print(index1)
     for ind in index1:
         df1.at[ind, "county_name"] = "DUPAGE"
-        print(df1.at[ind, "county_name"])
 
     # Geocoding function to retrieve coordinates for a county
     def geocode_county(state, county):
@@ -466,11 +462,14 @@ if filename not in " ".join(archive_dirs):
 
     # fetching the tif files from web and writing into local files
     for k in urlkeys:
-        fileFullName[k] = tif_dir + curr + "__" + k + ".tif"
         if k not in " ".join(tif_dirs):
+            fileFullName[k] = tif_dir + curr + "__" + k + ".tif"
             print(fileFullName[k])
             urllib.request.urlretrieve(url[k], fileFullName[k])
         else:
+            for fname in tif_dirs:
+                if k in fname:
+                    fileFullName[k] = tif_dir + fname
             print("not retrieving ", k)
     # ### <span style=color:blue>Fetching meta-data about the .tif files using GDAL, specifically the command-line operator gdalinfo.</span>
     def pull_useful(
@@ -499,7 +498,6 @@ if filename not in " ".join(archive_dirs):
         # if k == 'AEZ_classes':
         #     print(json.dumps(gdalInfo[k], indent=2, sort_keys=True))
         useful[k] = pull_useful(gdalInfo[k])
-        print("\n", k)
         print(json.dumps(useful[k], indent=2, sort_keys=True))
 
 
@@ -674,6 +672,7 @@ if yscyll_filename not in " ".join(archive_dirs):
 else:
     print("skipping ", yscyll_filename)
 
+s = requests.Session()
 ml_file = "ML-table-monthly.csv"
 if ml_file not in " ".join(ml_tables_dirs):
     yscyll_filename = "year_state_county_yield_lon_lat.csv"
@@ -747,7 +746,7 @@ if ml_file not in " ".join(ml_tables_dirs):
         api_request_url = base_url.format(longitude=lon, latitude=lat, year=str(year))
 
         # this api request returns a json file
-        response = requests.get(url=api_request_url, verify=True, timeout=30.00)
+        response = s.get(url=api_request_url, verify=True, timeout=30.00)
         # print(response.status_code)
         content = json.loads(response.content.decode("utf-8"))
 
@@ -803,6 +802,7 @@ if ml_file not in " ".join(ml_tables_dirs):
 
         if Path(outfilename).exists():
             continue
+        break
         # print(row)
         w_df[i] = fetch_weather_county_year(
             row["year"], row["state_name"], row["county_name"]
@@ -856,10 +856,11 @@ if ml_file not in " ".join(ml_tables_dirs):
     w_df = {}
     for i in range(0, len(df_yscyll)):
         padded = str(i).zfill(4)
-        w_df[i] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
-        # Want to have a name for the index of my dataframe
-        w_df[i].rename(columns={"Unnamed: 0": "date"}, inplace=True)
-        # w_df[i] = w_df[i].rename_axis(index='DATE')
+        if os.path.exists(weather_dir + wdtemplate.format(padded=padded)):
+            w_df[i] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
+            # Want to have a name for the index of my dataframe
+            w_df[i].rename(columns={"Unnamed: 0": "date"}, inplace=True)
+            # w_df[i] = w_df[i].rename_axis(index='DATE')
 
 
     print(w_df[4].shape)
@@ -968,25 +969,26 @@ if ml_file not in " ".join(ml_tables_dirs):
     for i in range(0, len(df_yscyll)):
         padded = str(i).zfill(4)
         # print(padded)
-        u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
-        # Want to have a name for the index of my dataframe
-        u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
+        if os.path.exists(weather_dir + wdtemplate.format(padded=padded)):
+            u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
+            # Want to have a name for the index of my dataframe
+            u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
 
-        dfw[padded] = create_monthly_df(u_df[padded])
-        # print(dfw.head())
+            dfw[padded] = create_monthly_df(u_df[padded])
+            # print(dfw.head())
 
-        seqw[i] = create_weather_seq_for_monthly(dfw[padded])
-        # print(json.dumps(dictw, indent=4)
+            seqw[i] = create_weather_seq_for_monthly(dfw[padded])
+            # print(json.dumps(dictw, indent=4)
 
-        # exceeding some I/O threshold
-        if i % 30 == 0:
-            time.sleep(0.05)
+            # exceeding some I/O threshold
+            if i % 30 == 0:
+                time.sleep(0.05)
 
-        if i > 9000 and i % 100 == 0:
-            time.sleep(0.5)
+            if i > 9000 and i % 100 == 0:
+                time.sleep(0.5)
 
-        if i % 500 == 0:
-            print("Completed processing for index: ", i)
+            if i % 500 == 0:
+                print("Completed processing for index: ", i)
 
 
     # sanity check
@@ -1077,10 +1079,11 @@ if ml_file not in " ".join(ml_tables_dirs):
     w_df = {}
     for i in range(0, len(df_yscyll)):
         padded = str(i).zfill(4)
-        w_df[i] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
-        # Want to have a name for the index of my dataframe
-        w_df[i].rename(columns={"Unnamed: 0": "date"}, inplace=True)
-        # w_df[i] = w_df[i].rename_axis(index='DATE')
+        if os.path.exists(weather_dir + wdtemplate.format(padded=padded)):
+            w_df[i] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
+            # Want to have a name for the index of my dataframe
+            w_df[i].rename(columns={"Unnamed: 0": "date"}, inplace=True)
+            # w_df[i] = w_df[i].rename_axis(index='DATE')
 
 
     print(w_df[4].shape)
@@ -1159,6 +1162,7 @@ if ml_file not in " ".join(ml_tables_dirs):
 
     def create_weather_seq_for_weekly(dfw):
         seq = []
+        cols = dfw.columns.tolist()
         for i in range(0, len(dfw)):
             for c in cols:
                 seq.append(dfw.iloc[i][c])
@@ -1184,25 +1188,26 @@ if ml_file not in " ".join(ml_tables_dirs):
     for i in range(0, len(df_yscyll)):
         padded = str(i).zfill(4)
         # print(padded)
-        u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
-        # Want to have a name for the index of my dataframe
-        u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
+        if os.path.exists(weather_dir + wdtemplate.format(padded=padded)):
+            u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
+            # Want to have a name for the index of my dataframe
+            u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
 
-        dfw[padded] = create_weekly_df(u_df[padded])
-        # print(dfw.head())
+            dfw[padded] = create_weekly_df(u_df[padded])
+            # print(dfw.head())
 
-        seqw[i] = create_weather_seq_for_weekly(dfw[padded])
-        # print(json.dumps(dictw, indent=4)
+            seqw[i] = create_weather_seq_for_weekly(dfw[padded])
+            # print(json.dumps(dictw, indent=4)
 
-        # exceeding some I/O threshold
-        # if i % 30 == 0:
-        #     time.sleep(0.05)
+            # exceeding some I/O threshold
+            # if i % 30 == 0:
+            #     time.sleep(0.05)
 
-        # if i > 4000 and i % 100 == 0:
-        #     time.sleep(0.5)
+            # if i > 4000 and i % 100 == 0:
+            #     time.sleep(0.5)
 
-        if i % 100 == 0:
-            print("Completed processing of index ", i)
+            if i % 100 == 0:
+                print("Completed processing of index ", i)
 
     # sanity check
     print(print(json.dumps(seqw, indent=4)))
@@ -1302,7 +1307,6 @@ else:
 
 
 # <span style=color:blue>Importing the MONTHLY ML table </span>
-
 
 ml_file = "ML-table-monthly.csv"
 

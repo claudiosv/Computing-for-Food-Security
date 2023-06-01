@@ -7,3 +7,4 @@
 *.cpg
 *.dbf
 *.tif_bak
+Project 3/**/*.csv
