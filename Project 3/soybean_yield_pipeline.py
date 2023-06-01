@@ -4,35 +4,27 @@
 import datetime
 import json
 import math
-from pathlib import Path
 import shutil
 import subprocess
-import time
 import urllib
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from time import sleep
-from urllib.error import HTTPError
-import os
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import rasterio
 import requests
-
-
+from c_usda_quick_stats import c_usda_quick_stats
 from geopy.geocoders import Nominatim
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Lasso, LinearRegression
-from sklearn.metrics import (
-    mean_squared_error,
-    r2_score,
-)
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from c_usda_quick_stats import c_usda_quick_stats
 
 MY_NASS_API_key = "A269B59D-8921-3BAB-B00A-26507C5E9D29"
-
 
 def curr_timestamp():
     current_datetime = datetime.datetime.now()
@@ -830,7 +822,7 @@ df_ysc_y_soil_weather_weekly.to_csv(ml_file, index=False)
 print("Wrote file ", ml_file)
 
 
-ml_file = ml_tables_dir  / "ML-table-monthly.csv"
+ml_file = ml_tables_dir / "ML-table-monthly.csv"
 
 
 df_ml = pd.read_csv(ml_file)
