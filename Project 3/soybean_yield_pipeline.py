@@ -17,7 +17,6 @@ import time
 import urllib
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
 from time import sleep
 from urllib.error import HTTPError
 import os
@@ -113,7 +112,7 @@ class c_usda_quick_stats:
             print(f"Failed to parse the response data: {e}")
         except:
             print(
-                f"Failed because of unknown exception; perhaps the USDA NASS site is down"
+                "Failed because of unknown exception; perhaps the USDA NASS site is down"
             )
 
 
@@ -1073,14 +1072,7 @@ for i in range(0, len(df_yscyll)):
 
     dfw[padded] = create_weekly_df(u_df[padded])
 
-    seqw[i] = create_weather_seq(dfw[padded])
-
-    # exceeding some I/O threshold
-    # if i % 30 == 0:
-    #     time.sleep(0.05)
-
-    # if i > 4000 and i % 100 == 0:
-    #     time.sleep(0.5)
+    seqw[i] = create_weather_seq_for_weekly(dfw[padded])
 
     if i % 100 == 0:
         print("Completed processing of index ", i)

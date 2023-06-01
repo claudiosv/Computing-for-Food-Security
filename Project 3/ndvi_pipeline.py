@@ -13,7 +13,6 @@ import os
 import random
 import subprocess
 from osgeo import gdal, osr
-import json
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
