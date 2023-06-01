@@ -472,7 +472,7 @@ starttime = datetime.datetime.now().strftime("%Y-%m-% %H:%M:%S")
 
 for i in range(0, len(df_yscyll)):
     row = df_yscyll.iloc[i]
-    outfilename = out_dir + filename.format(index=str(i).zfill(4))
+    outfilename = out_dir / filename.format(index=str(i).zfill(4))
 
     if Path(outfilename).exists():
         continue
@@ -593,7 +593,7 @@ seqw = {}
 for i in range(0, len(df_yscyll)):
     padded = str(i).zfill(4)
 
-    u_df[padded] = pd.read_csv(weather_dir + wdtemplate.format(padded=padded))
+    u_df[padded] = pd.read_csv(weather_dir / wdtemplate.format(padded=padded))
 
     u_df[padded].rename(columns={"Unnamed: 0": "date"}, inplace=True)
 
@@ -726,6 +726,7 @@ print(create_weekly_df(w_df[0]).shape)
 def create_weather_seq_for_weekly(dfw):
     seq = []
     for i in range(0, len(dfw)):
+        cols = dfw.columns.tolist()
         for c in cols:
             seq.append(dfw.iloc[i][c])
     return seq

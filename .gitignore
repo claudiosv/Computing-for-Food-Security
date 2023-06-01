@@ -14,3 +14,4 @@ ML-Archives--v01
 OUTPUTS
 USDA-NASS--v01
 Project 3/**/*.csv
+*.pyc
