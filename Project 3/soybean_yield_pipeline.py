@@ -981,15 +981,10 @@ print(r2MM)
 plot_predictions(y_testMM, y_predMM, "Random Forest Regressor using MinMaxScaler")
 
 
-#!/usr/bin/env python
+ml_file = ml_tables_dir / "ML-table-weekly.csv"
 
 
-ml_tables_dir = archive_dir + "ML-TABLES--v01/"
-
-ml_file = "ML-table-weekly.csv"
-
-
-df_ml = pd.read_csv(ml_tables_dir + ml_file)
+df_ml = pd.read_csv(ml_file)
 print(df_ml.shape)
 print(df_ml.head())
 
