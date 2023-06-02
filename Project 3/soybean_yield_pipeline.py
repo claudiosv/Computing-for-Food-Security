@@ -1,6 +1,19 @@
-#!/usr/bin/env python
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.14.5
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
 
-
+# %%
 import datetime
 import json
 import math
@@ -24,6 +37,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
+# %%
 MY_NASS_API_key = "A269B59D-8921-3BAB-B00A-26507C5E9D29"
 
 
@@ -44,6 +58,7 @@ def get_coordinate_pixel(tiff_file, lon, lat):
     return clip[0][0][0]
 
 
+# %%
 output_dir = Path("USDA-NASS--v01/OUTPUTS/")
 
 archive_dir = Path("ML-ARCHIVES--v01/")
@@ -59,7 +74,7 @@ tif_dir.mkdir(parents=True, exist_ok=True)
 weather_dir.mkdir(parents=True, exist_ok=True)
 ml_tables_dir.mkdir(parents=True, exist_ok=True)
 
-
+# %%
 farm_survey_1997_file = output_dir / "national_farm_survey_acres_ge_1997.csv"
 
 if not farm_survey_1997_file.exists():
@@ -88,7 +103,7 @@ else:
 
 soybean_yield_data = output_dir / "corn_yield_data_raw.csv"
 
-
+# %%
 if not soybean_yield_data.exists():
     parameters = (
         "source_desc=SURVEY"
@@ -119,8 +134,9 @@ if not soybean_yield_data.exists():
 else:
     print("skipping soybean_yield_data")
 
+# %%
 tgt_file = archive_dir / "corn_yield_data.csv"
-if not tgt_file.exists():
+if True or not tgt_file.exists():
     df = pd.read_csv(soybean_yield_data)
 
     df1 = df[["short_desc"]].drop_duplicates()
@@ -147,21 +163,23 @@ if not tgt_file.exists():
 else:
     print("not copying ", tgt_file)
 
-tgt_file_01 = archive_dir / "year_state_county_yield_corn_200.csv"
+# %%
+tgt_file_01 = archive_dir / "year_state_county_yield_corn.csv"
 if not tgt_file_01.exists():
     tgt_file = archive_dir / "corn_yield_data.csv"
 
-    df = pd.read_csv(tgt_file)
-    top_200 = (
+    df = pd.read_csv(tgt_file).set_index(["state_name", "county_name"])
+    top_counties = (
         df.groupby(["state_name", "county_name"])
         .agg("yield")
         .sum()
-        .sort_values(ascending=False).head(200).reset_index()
+        .sort_values(ascending=False)
+        .head(530)
+        .reset_index()
+        .set_index(["state_name", "county_name"])
     )
-    print(top_200.head(2).index)
-    df = df[
-        df[["state_name", "county_name"]].isin(top_200[["state_name", "county_name"]])
-    ]
+
+    df = df[df.index.isin(top_counties.index)].reset_index()
     cols_to_keep = ["year", "state_name", "county_name", "yield"]
     dfml = df[cols_to_keep]
 
@@ -176,6 +194,7 @@ if not tgt_file_01.exists():
 else:
     print("not writing ", tgt_file_01)
 
+# %%
 state_county_lon_lat = archive_dir / "state_county_lon_lat.csv"
 if not state_county_lon_lat.exists():
     df = pd.read_csv(tgt_file_01)
@@ -1133,3 +1152,5 @@ print(r2MM)
 
 
 plot_predictions(y_testMM, y_predMM, "Random Forest Regressor using MinMaxScaler")
+
+# %%
