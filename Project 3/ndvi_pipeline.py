@@ -422,13 +422,15 @@ def usage_is_here(year, lon, lat, land_use_val):
 
 
 def soy_is_here(year, lon, lat):
-    return usage_is_here(year, lon, lat, 5)
+    return usage_is_here(year, lon, lat, 5) # 1 is corn, 5 is soy
 
+def corn_is_here(year, lon, lat):
+    return usage_is_here(year, lon, lat, 1) # 1 is corn, 5 is soy
 
 old_lon = -92.8
 old_lat = 42.7
-print(soy_is_here(2008, old_lon, old_lat))
-print(soy_is_here(2022, old_lon, old_lat))
+print(corn_is_here(2008, old_lon, old_lat))
+print(corn_is_here(2022, old_lon, old_lat))
 # ### <span style=color:blue>Importing the dictionary with lon-lat sequences.  Also setting a second dict that will hold lists lon-lats that are in soybean fields.</span>
 
 in_file = "state_county__seq_of_lon_lats.json"
@@ -440,12 +442,12 @@ print(dict.keys())
 # <span style=color:blue>Function that scans through one list of lon-lats and finds first set that are in soybean fields</span>
 
 
-def gen_soy_lon_lats(year, state, county, count):
+def gen_corn_lon_lats(year, state, county, count):
     list = dict[state][county]
     i = 0
     out_list = []
     for ll in list:
-        if soy_is_here(year, ll[0], ll[1]):
+        if corn_is_here(year, ll[0], ll[1]):
             out_list += [ll]
             i += 1
         if i == 20:
@@ -457,18 +459,18 @@ def gen_soy_lon_lats(year, state, county, count):
     return out_list, short_fall_record
 
 
-list, short = gen_soy_lon_lats(2008, "ILLINOIS", "MASSAC", 20)
+list, short = gen_corn_lon_lats(2008, "ILLINOIS", "MASSAC", 20)
 print(list)
 print(short)
 print()
-list, short = gen_soy_lon_lats(2008, "MISSOURI", "DALLAS", 20)
-print(list)
-print(short)
+# list, short = gen_soy_lon_lats(2008, "MISSOURI", "DALLAS", 20)
+# print(list)
+# print(short)
 # <span style=color:blue>Function that generates a fixed number of lon-lats in soybean fields for each year and each county. This took quite a while to run completely -- about 4 hours.    </span>
 
 working_dir = "OUTPUTS/OUTPUT-v01/"
 os.makedirs(working_dir, exist_ok=True)
-dict1_file = "year_state_county_soy_seq.json"
+dict1_file = "year_state_county_corn_seq.json"
 short_list = "year_state_county_shortfalls.json"
 
 
@@ -487,7 +489,7 @@ def gen_all_soy_lists(dict, count):
     for year in dict1.keys():
         for state in dict.keys():
             for county in dict[state].keys():
-                list, short = gen_soy_lon_lats(year, state, county, count)
+                list, short = gen_corn_lon_lats(year, state, county, count)
                 dict1[year][state][county] = list
                 if short != []:
                     shortfall_list += [short]
@@ -511,7 +513,7 @@ dict1, short = gen_all_soy_lists(dict, 20)
 print(datetime.datetime.now())
 # <span style=color:blue>Save the dict1 and also the shortfalls    </span>
 
-dict1_file = "year_state_county_soy_seq.json"
+dict1_file = "year_state_county_corn_seq.json"
 short_list = "year_state_county_shortfalls.json"
 
 with open(archive_dir + dict1_file, "w") as fp:
@@ -530,7 +532,7 @@ print(len(zero_falls))
 
 print(json.dumps(zero_falls, indent=4))
 
-zero_file = "year_state_county_soy_zero_falls.json"
+zero_file = "year_state_county_corn_zero_falls.json"
 with open(archive_dir + zero_file, "w") as fp:
     json.dump(zero_falls, fp)
 # <span style=color:blue>Checking if any year-state-county in zero_falls had a positive yield in year_state_county_yield table</span>
