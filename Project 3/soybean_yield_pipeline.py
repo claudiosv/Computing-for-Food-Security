@@ -26,6 +26,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 MY_NASS_API_key = "A269B59D-8921-3BAB-B00A-26507C5E9D29"
 
+
 def curr_timestamp():
     current_datetime = datetime.datetime.now()
     formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
@@ -85,7 +86,7 @@ if not farm_survey_1997_file.exists():
 else:
     print("Skipping national_farm_survey_acres_ge_1997")
 
-soybean_yield_data = output_dir / "soybean_yield_data_raw.csv"
+soybean_yield_data = output_dir / "corn_yield_data_raw.csv"
 
 
 if not soybean_yield_data.exists():
@@ -94,7 +95,7 @@ if not soybean_yield_data.exists():
         + "&sector_desc=CROPS"
         + "&"
         + urllib.parse.quote("group_desc=FIELD CROPS")
-        + "&commodity_desc=SOYBEANS"
+        + "&commodity_desc=CORN"
         + "&statisticcat_desc=YIELD"
         + "&geographic_level=STATE"
         + "&agg_level_desc=COUNTY"
@@ -105,6 +106,9 @@ if not soybean_yield_data.exists():
         + "&state_name=OHIO"
         + "&state_name=NEBRASKA"
         + "&state_name=MISSOURI"
+        + "&state_name=KANSAS"
+        + "&state_name=SOUTH_DAKOTA"
+        + "&state_name=COLORADO"
         + "&year__GE=2003"
         + "&year__LE=2022"
         + "&format=CSV"
@@ -115,14 +119,14 @@ if not soybean_yield_data.exists():
 else:
     print("skipping soybean_yield_data")
 
-tgt_file = archive_dir / "soybean_yield_data.csv"
+tgt_file = archive_dir / "corn_yield_data.csv"
 if not tgt_file.exists():
     df = pd.read_csv(soybean_yield_data)
 
     df1 = df[["short_desc"]].drop_duplicates()
     print(df1.head(10))
 
-    df = df[df["short_desc"] == "SOYBEANS - YIELD, MEASURED IN BU / ACRE"]
+    df = df[df["short_desc"] == "CORN, GRAIN - YIELD, MEASURED IN BU / ACRE"]
     print(len(df))
 
     bad_county_names = ["OTHER COUNTIES", "OTHER (COMBINED) COUNTIES"]
@@ -135,7 +139,7 @@ if not tgt_file.exists():
 
     df = df.rename(columns={"Value": "yield"})
 
-    output_file = output_dir / "repaired_yield.csv"
+    output_file = output_dir / "repaired_yield_corn.csv"
 
     df.to_csv(output_file, index=False)
 
@@ -143,12 +147,21 @@ if not tgt_file.exists():
 else:
     print("not copying ", tgt_file)
 
-tgt_file_01 = archive_dir / "year_state_county_yield.csv"
+tgt_file_01 = archive_dir / "year_state_county_yield_corn_200.csv"
 if not tgt_file_01.exists():
-    tgt_file = archive_dir / "soybean_yield_data.csv"
+    tgt_file = archive_dir / "corn_yield_data.csv"
 
     df = pd.read_csv(tgt_file)
-
+    top_200 = (
+        df.groupby(["state_name", "county_name"])
+        .agg("yield")
+        .sum()
+        .sort_values(ascending=False).head(200).reset_index()
+    )
+    print(top_200.head(2).index)
+    df = df[
+        df[["state_name", "county_name"]].isin(top_200[["state_name", "county_name"]])
+    ]
     cols_to_keep = ["year", "state_name", "county_name", "yield"]
     dfml = df[cols_to_keep]
 
@@ -165,9 +178,7 @@ else:
 
 state_county_lon_lat = archive_dir / "state_county_lon_lat.csv"
 if not state_county_lon_lat.exists():
-    file = archive_dir / "year_state_county_yield.csv"
-
-    df = pd.read_csv(file)
+    df = pd.read_csv(tgt_file_01)
     print("number of rows in csv cleaned for ML: ", len(df))
 
     print(df.head())
