@@ -164,7 +164,7 @@ else:
     print("not copying ", tgt_file)
 
 # %%
-tgt_file_01 = archive_dir / "year_state_county_yield_corn.csv"
+tgt_file_01 = archive_dir / "year_state_county_yield.csv"
 if not tgt_file_01.exists():
     tgt_file = archive_dir / "corn_yield_data.csv"
 
@@ -254,15 +254,22 @@ if not state_county_lon_lat_soil.exists():
         "nutr_ret_high": "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ2_mze_v9aH.tif",
         "soil_qual_high": "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ0_mze_v9aH.tif",
         "soil_qual_low": "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/LR/soi1/SQ0_mze_v9aL.tif",
-        "suit_irrig_high_soy": "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/8110H/suHi_soy.tif",
+        # "suit_irrig_high_soy": "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/8110H/suHi_soy.tif",
+        # https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/6190H/suHi_soy.tif
+        # https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/7100H/suHr_soy.t
+        # https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/6190H/suHs_mze.tifif
+        #https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/8110H/suHs_mze.tif
+        "suit_irrig_high_corn": "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/8110H/suHs_mze.tif",
+        # https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res05/CRUTS32/Hist/6190H/siHr_mze.tif
     }
 
     fileFullName = {}
 
     for key, url in urlkeys.items():
         tif_file = tif_dir / f"{key}.tif"
+        fileFullName[key] = tif_file
+
         if not tif_file.exists():
-            fileFullName[key] = tif_file
             print(fileFullName[key])
             urllib.request.urlretrieve(url, tif_file)
         else:
@@ -282,7 +289,7 @@ if not state_county_lon_lat_soil.exists():
     gdalInfo = {}
     useful = {}
     for k in urlkeys.keys():
-        gdalInfoReq[k] = " ".join(["gdalinfo", "-json", fileFullName[k]])
+        gdalInfoReq[k] = " ".join(["gdalinfo", "-json", str(fileFullName[k])])
 
         result = subprocess.run(
             [gdalInfoReq[k]], shell=True, capture_output=True, text=True
@@ -402,28 +409,29 @@ yscy_file = archive_dir / "year_state_county_yield.csv"
 scll_file = archive_dir / "state_county_lon_lat.csv"
 df_yscy = pd.read_csv(yscy_file)
 df_scll = pd.read_csv(scll_file)
-
-
-index_list = df_yscy.index[
-    (df_yscy["county_name"] == "DU PAGE") | (df_yscy["county_name"] == "DUPAGE")
-].tolist()
-print(index_list)
-for i in index_list:
-    df_yscy.at[i, "county_name"] = "DUPAGE"
-    print(df_yscy.at[i, "county_name"])
-print(len(df_yscy), len(df_scll))
-df_yscyll = pd.merge(df_yscy, df_scll, on=["state_name", "county_name"], how="left")
-print(len(df_yscyll))
-
-
-print(df_yscyll[df_yscyll["year"] == 2022].head(10))
-print(df_scll.head(10))
-
-print(df_yscyll.iloc[279:284].head())
 yscyll_filename = archive_dir / "year_state_county_yield_lon_lat.csv"
-df_yscyll.to_csv(yscyll_filename, index=False)
-print("wrote file: ", yscyll_filename)
-yscyll_filename = archive_dir / "year_state_county_yield_lon_lat.csv"
+
+if not yscyll_filename.exists():
+    index_list = df_yscy.index[
+        (df_yscy["county_name"] == "DU PAGE") | (df_yscy["county_name"] == "DUPAGE")
+    ].tolist()
+    print(index_list)
+    for i in index_list:
+        df_yscy.at[i, "county_name"] = "DUPAGE"
+        print(df_yscy.at[i, "county_name"])
+    print(len(df_yscy), len(df_scll))
+    df_yscyll = pd.merge(df_yscy, df_scll, on=["state_name", "county_name"], how="left")
+    print(len(df_yscyll))
+
+
+    print(df_yscyll[df_yscyll["year"] == 2022].head(10))
+    print(df_scll.head(10))
+
+    print(df_yscyll.iloc[279:284].head())
+    df_yscyll.to_csv(yscyll_filename, index=False)
+    print("wrote file: ", yscyll_filename)
+else:
+    print("Skipped", yscyll_filename)
 df_yscyll = pd.read_csv(yscyll_filename)
 
 weather_params = [

@@ -1,0 +1,44 @@
+{
+  "band_count": 1,
+  "bbox": {
+    "east_longitude": -66.91,
+    "north_latitude": 49.38,
+    "south_latitude": 24.41,
+    "west_longitude": -124.79
+  },
+  "cornerCoordinates": {
+    "center": [
+      -48930.0,
+      1724760.0
+    ],
+    "lowerLeft": [
+      -2356095.0,
+      276915.0
+    ],
+    "lowerRight": [
+      2258235.0,
+      276915.0
+    ],
+    "upperLeft": [
+      -2356095.0,
+      3172605.0
+    ],
+    "upperRight": [
+      2258235.0,
+      3172605.0
+    ]
+  },
+  "espgEncoding": 5070,
+  "proj:transform": [
+    -2356095.0,
+    30.0,
+    0.0,
+    3172605.0,
+    0.0,
+    -30.0
+  ],
+  "size": [
+    153811,
+    96523
+  ]
+}

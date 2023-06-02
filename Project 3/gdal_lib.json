@@ -1,0 +1,68 @@
+{
+  "band_count": 1,
+  "bbox": {
+    "east_longitude": 23.149590344347985,
+    "north_latitude": -127.88721217969017,
+    "south_latitude": -74.15843704158601,
+    "west_longitude": 47.958405554221564
+  },
+  "bbox_noproj": {
+    "east_longitude": 2258235.0,
+    "north_latitude": 3172605.0,
+    "south_latitude": 276915.0,
+    "west_longitude": -2356095.0
+  },
+  "cornerCoordinates": {
+    "center": [
+      -48930.0,
+      1724760.0
+    ],
+    "lowerLeft": [
+      -2356095.0,
+      276915.0
+    ],
+    "lowerRight": [
+      2258235.0,
+      276915.0
+    ],
+    "upperLeft": [
+      -2356095.0,
+      3172605.0
+    ],
+    "upperRight": [
+      2258235.0,
+      3172605.0
+    ]
+  },
+  "cornerCoordinatesProj": {
+    "lowerLeft": [
+      22.940270403255237,
+      -118.75300289350196
+    ],
+    "lowerRight": [
+      23.149590344347985,
+      -74.15843704158601
+    ],
+    "upperLeft": [
+      47.958405554221564,
+      -127.88721217969017
+    ],
+    "upperRight": [
+      48.245289011214886,
+      -65.34550518475805
+    ]
+  },
+  "espgEncoding": 5070,
+  "proj:transform": [
+    -2356095.0,
+    30.0,
+    0.0,
+    3172605.0,
+    0.0,
+    -30.0
+  ],
+  "size": [
+    153811,
+    96523
+  ]
+}
