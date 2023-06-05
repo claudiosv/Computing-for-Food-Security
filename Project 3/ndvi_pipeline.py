@@ -139,6 +139,92 @@ with out_file.open("w") as fp:
 
 
 # %%
+rect = j_counties.points.unary_union.envelope
+
+# %%
+import contextily as cx
+
+# %%
+rect.bounds
+
+# %%
+j_counties.crs
+
+# %%
+ax = j_counties.plot(alpha=0.5, edgecolor="k")#gpd.GeoDataFrame(geometry=[rect], crs=j_counties.crs).plot(alpha=0.5, edgecolor="k")
+cx.add_basemap(ax, zoom=12, source=cx.providers.Esri.WorldImagery)
+
+# %%
+from ipyleaflet import Map, GeoData, basemaps, LayersControl
+import geopandas
+import json
+
+countries = gpd.GeoDataFrame(geometry=[j_counties.unary_union], crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+# m.add_layer(gpd.GeoDataFrame(geometry=[j_counties.unary_union.envelope], crs=j_counties.crs))
+# m.add_control(LayersControl())
+
+m
+
+# %%
+gpd.GeoDataFrame(geometry=[j_counties.unary_union], crs=j_counties.crs)
+
+# %%
+from shapely.ops import unary_union
+boundary = gpd.GeoSeries(unary_union(j_counties.unary_union))
+
+# %%
+j_counties.unary_union.bounds
+
+
+# %%
+def make_grid(polygon, edge_size):
+    """
+    polygon : shapely.geometry
+    edge_size : length of the grid cell
+    """
+    from itertools import product
+    import numpy as np
+    import geopandas as gpd
+    
+    bounds = polygon.bounds
+    x_coords = np.arange(bounds[0] + edge_size/2, bounds[2], edge_size)
+    y_coords = np.arange(bounds[1] + edge_size/2, bounds[3], edge_size)
+    combinations = np.array(list(product(x_coords, y_coords)))
+    squares = gpd.points_from_xy(combinations[:, 0], combinations[:, 1]).buffer(edge_size / 2, cap_style=3)
+    return gpd.GeoSeries(squares[squares.intersects(polygon)])
+
+
+
+# %%
+j_counties
+
+# %%
+countries
+
+# %%
+grid = make_grid(j_counties.points.unary_union, 0.2)
+countries = gpd.GeoDataFrame(geometry=grid, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+m
+
+# %%
 
 # #!/usr/bin/env python
 # coding: utf-8
@@ -493,6 +579,10 @@ df_zwy.to_csv(zero_with_yield, index=False)
 
 
 # %%
+# %env SENTINEL_CLIENT_ID=0d67f2dd-b15f-4a0d-a504-143db1f4b0f7
+# %env SENTINEL_CLIENT_SECRET=!{nz6Re26F{>uQ2RP;h/eDuR|V%;7]hGB27.xa#W
+
+# %%
 
 # #!/usr/bin/env python
 # coding: utf-8
@@ -555,45 +645,41 @@ else:
 # Bounding box for about 1/8 of Iowa
 # [-96.481934,42.520700,-95.075684,43.516689]
 
-corner_iowa_coords_wgs84 = (-96.481934, 42.520700, -95.075684, 43.516689)
 
-# a central point in IOWA
-# [-96.350098,42.195969,-93.801270,43.484812]
+# %%
+j_counties.set_geometry("points")
 
-# by using corners that are .001 apart, with 100 meter resultion, I get a box with
-#    size 1 x 1 pixels
-#    size 8 x 11 pixels
+# %%
+big_grid = make_grid(j_counties.points.unary_union, 3.3)
+big_counties_grid = gpd.GeoDataFrame(geometry=big_grid, crs=j_counties.crs)
+big_grid_geo_wgs84 = big_counties_grid.to_crs("wgs84").geometry#[0].bounds
 
-# The following lon-lat is in Buena Vista county, Iowa,
-# and was a soybean field in 2022 (but apparently not in 2021...)
+small_grid = make_grid(j_counties.points.unary_union, 2.2)
+small_counties_grid = gpd.GeoDataFrame(geometry=small_grid, crs=j_counties.crs)
+small_grid_geo_wgs84 = small_counties_grid.to_crs("wgs84").geometry#[0].bounds
 
-lon = -94.7386486
-lat = 42.6846289
+# %%
+for i, geo in enumerate(small_grid.geometry):
+    resolution2 = 100 # make grid ~2.2
+    point_iowa_bbox = BBox(bbox=geo.bounds, crs=CRS.WGS84)
+    point_iowa_size = bbox_to_dimensions(point_iowa_bbox, resolution=resolution2)
+    print(
+        f"For grid cell {i}, image shape at {resolution2} m resolution: {point_iowa_size} pixels"
+    )
 
-# building a .001 degree x .001 degree bbox around that
-point_iowa_wgs84 = (-94.738, 42.684, -94.737, 42.685)
-# central_iowa_wgs84 = (-94.73,42.68,--94.74,42.69)
-# <span style=color:blue>Once you have the bounds for a box, then you can initialize a "BBox" object and specify both its bounds and also the desired resolution.    </span>
-#
-# <span style=color:blue>Note: by experimenting I found that you cannot request an image where the box has > 2500 pixels along either direction.  Also, each pixel can be at most 200 m x 200 m.  This puts an effective limit on the size of box you can retrieve with one call to SentinelHub -- about 500km x 500km at the equator.   </span>
+for i, geo in enumerate(big_grid.geometry):
+    resolution1 = 150 # make grid ~3.3
+    corner_iowa_bbox = BBox(bbox=geo.bounds, crs=CRS.WGS84)
+    corner_iowa_size = bbox_to_dimensions(corner_iowa_bbox, resolution=resolution1)
+    print(
+        f"For grid cell {i}, image shape at {resolution1} m resolution: {corner_iowa_size} pixels"
+    )
 
-# using 150m, because when I used 200m the actual request used 203m,
-#     which exceeded the bound on pixel size
-resolution1 = 150
-corner_iowa_bbox = BBox(bbox=corner_iowa_coords_wgs84, crs=CRS.WGS84)
-corner_iowa_size = bbox_to_dimensions(corner_iowa_bbox, resolution=resolution1)
+# %%
+corner_iowa_color_imgs_1_day
 
-resolution2 = 100
-point_iowa_bbox = BBox(bbox=point_iowa_wgs84, crs=CRS.WGS84)
-point_iowa_size = bbox_to_dimensions(point_iowa_bbox, resolution=resolution2)
-print(
-    f"For corner Iowa box, image shape at {resolution1} m resolution: {corner_iowa_size} pixels"
-)
-print()
+# %%
 
-print(
-    f"For point Iowa box, image shape at {resolution2} m resolution: {point_iowa_size} pixels"
-)
 # <span style=color:blue>Getting RGB for corner_iowa_bbox     </span>
 #
 # <span style=color:blue>Here is some helpful text from the example notebook "process_request.ipynb" that I have been following for this part of my notebook </span>
@@ -709,8 +795,8 @@ plot_image(ci_image_7_day, factor=1 / 255, clip_range=(0, 1))
 # to be a single pixel of size 100m x 100m, that was in a soybean field in 2022
 
 # It is centered at
-lon = -94.7386486
-lat = 42.6846289
+# lon = -94.7386486
+# lat = 42.6846289  
 
 evalscript_NVDI_bands = """
     //VERSION=3
@@ -773,3 +859,5 @@ print()
 
 
 # ### <span style=color:blue>Note: if you run the above request on point_iowa_box for "2022-08-01" to "2022-08-02", then you get [0,0].  I think this is because the satellite didn't go over this cell on that one day. Remember that with the two sentinel-2 satellites taken together there is a 5-day return rate. In general, one should probably make single-cell requests that are across a 5 day span, e.g., 2022-04-01 to 2022-04-06. </span>
+
+# %%
