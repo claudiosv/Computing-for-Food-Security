@@ -1,15 +1,23 @@
-#!/usr/bin/env python
-# coding: utf-8
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.14.5
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
 
-# ## <span style=color:blue>This notebook creates a function that, given a county, will generate some number (e.g., 1000) of lon-lat pairs that are all within that county.   </span>
-
-# <span style=color:blue>First, a function that builds an approximate bounding box around a county. </span>
-#
-# <span style=color:blue>This is a little sloppy - we build a box that is 1 degree x 1 degree that is centered on the central lon-lat of the county.  Most of the counties in my 7-state soy region have this characteristic. </span>
-
+# %%
 import datetime
 import json
 import os
+from pathlib import Path
 import random
 import subprocess
 from osgeo import gdal, osr
@@ -28,10 +36,10 @@ from sentinelhub import (
     bbox_to_dimensions,
 )
 from shapely.geometry import Point
+from collections import defaultdict
 
-# from utils import plot_image
 
-
+# %%
 def plot_image(image, factor=1, clip_range=(0, 1)):
     # Apply factor to image
     image = image * factor
@@ -44,176 +52,95 @@ def plot_image(image, factor=1, clip_range=(0, 1)):
     plt.show()
 
 
+# %%
 # will fetch the lon-lats at center of each county from the file state_county_lon_lats.csv
 
-archive_dir = "ML-ARCHIVES--v01/"
-scll = "state_county_lon_lat.csv"
+archive_dir = Path("ML-ARCHIVES--v01/")
+scll = archive_dir / "state_county_lon_lat.csv"
 
-df_scll = pd.read_csv(archive_dir + scll)
+df_scll = pd.read_csv(scll).drop(["lon", "lat"], axis=1)
 print(df_scll.head())
 
-
-# Geocoding function to retrieve coordinates for a county
-def approx_county_bbox(state, county):
-    rows = df_scll.loc[
-        (df_scll["state_name"] == state) & (df_scll["county_name"] == county)
-    ]
-
-    lon = rows["lon"].values[0]
-    lat = rows["lat"].values[0]
-
-    if True:
-        west_lon = lon - 0.5
-        east_lon = lon + 0.5
-        north_lat = lat + 0.5
-        south_lat = lat - 0.5
-        return {
-            "center_lon": lon,
-            "center_lat": lat,
-            "west_lon": west_lon,
-            "east_lon": east_lon,
-            "north_lat": north_lat,
-            "south_lat": south_lat,
-        }
-    else:
-        print("no lat-lon found for ", state, county)
-        return {"error": "no lat-lon found for " + county + ", " + state}
-
-
-# test for Bureau County, IL
-# center point lon for this county is: -89.5341179
-# center point lat for this county is:  41.4016294
-
-bbox = approx_county_bbox("ILLINOIS", "JO DAVIESS")
-# bbox = approx_county_bbox('ILLINOIS', 'FAKE NAME')
-
-print(json.dumps(bbox, indent=4, sort_keys=True))
-# ### <span style=color:blue>Now working towards a function that tests if lat-lon is in a county    </span>
-#
-# <span style=color:blue>As a first step, I downloaded files from https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html that hold polygon specifications for all of the US counties.  In particular, I fetched the Counties file that was 1:20,000,000 at the link https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_county_20m.zip.  (This was the least precise, and don't see a need for more precision.) From inside the zip directory I retrieved, the ".dbf" file seemed most useful. </span>
-# downloaded this from
-county_dir = "COUNTY-BOUNDING-POLYGONS/"
-os.makedirs(county_dir, exist_ok=True)
+# %%
+county_dir = Path("COUNTY-BOUNDING-POLYGONS/")
+if not county_dir.exists():
+    county_dir.makedirs(exist_ok=True)
 county_file = "cb_2022_us_county_20m.dbf"
-county_path = county_dir + county_file
+county_path = county_dir / county_file
 
 # Load county boundary data from Shapefile
 counties = gpd.read_file(county_path)
 
 
-print(counties.head())
-# <span style=color:blue>The state_name, county_name values from the USDA NASS yield data are all capitals, and need to convert to the format above, which is first-letter-is-capitalized     </span>
-
-# test
-print("NEW JERSEY".title())
-print("DU PAGE".title())
-# <span style=color:blue>Function to test with a given lon-lat is in a state-county     </span>
-
-# Load county boundary data; this is a .dbf file
-
-
-def lon_lat_in_county(longitude, latitude, state_name, county_name):
-    # Load county boundary data; this is a .dbf file
-    counties = gpd.read_file(county_path)
-
-    # Find the specified county
-    county = counties[
-        (counties["NAME"] == county_name.title())
-        & (counties["STATE_NAME"] == state_name.title())
-    ]
-
-    if county.empty:
-        print(f"County '{county_name}' not found.")
-        return False
-
-    # Create shapely point from the provided latitude and longitude
-    point = Point(longitude, latitude)
-
-    # Check if the point is within the county polygon
-    return point.within(county.geometry.values[0])
-
-
-# test
-state_name = "ILLINOIS"
-county_name = "JO DAVIESS"
-lon_in = -90.174374
-lat_in = 42.350666
-lon_out = -95
-lat_out = 35
-
-print(lon_lat_in_county(lon_in, lat_in, state_name, county_name))
-print(lon_lat_in_county(lon_out, lat_out, state_name, county_name))
-# <span style=color:blue>Function that generates some number of lon-lat pairs that are within a county     </span>
-
-
-# assumes state_name, county_name are all-caps, as in the USDA NASS yield data sets
-def gen_lon_lat_in_county(state_name, county_name, count):
-    list = []
-    bbox = approx_county_bbox(state_name, county_name)
-
-    for i in range(0, count):
-        r1 = random.uniform(0, 1)
-        r2 = random.uniform(0, 1)
-
-        lon = round(bbox["east_lon"] + r1 * (bbox["west_lon"] - bbox["east_lon"]), 7)
-        lat = round(bbox["south_lat"] + r2 * (bbox["north_lat"] - bbox["south_lat"]), 7)
-        list += [[lon, lat]]
-    return list
-
-
-# test
-list = gen_lon_lat_in_county("ILLINOIS", "JO DAVIESS", 1000)
-print(json.dumps(list[0:5], indent=4))
-print()
-print(json.dumps(list[995:1000], indent=4))
-# <span style=color:blue>     </span>
-
-# <span style=color:blue>Based on the file state_county_lon_lat.csv, build a dictionary with shape state / county / seq_of_lon_lat_in_county.  Actually, this cell is a warm up.    </span>
-
-print(df_scll.state_name.unique())
-# answer is: ['ILLINOIS' 'INDIANA' 'IOWA' 'MISSOURI' 'NEBRASKA' 'OHIO']
-
-# oh - realizing now that somehow Minnesota got dropped from my set of states
-# It was in my notebook ML-for-soybeans-part-01--fetching-yield-data, where
-# I mispelled MINNESTOTA.  Not fixing it for now...
-
-dict = {}
-for state in df_scll.state_name.unique():
-    dict[state] = {}
-
-print(json.dumps(dict, indent=4, sort_keys=True))
-# <span style=color:blue>Here is a function that walks through all the state-county pairs of df_scll, and for each one creates a sequence of 1000 lon-lats in that state-county, and puts that into dict.     </span>
-
-
-def create_lon_lat_seqs(count):
-    dict = {}
-    for state in df_scll.state_name.unique():
-        dict[state] = {}
-    for i in range(0, len(df_scll)):
-        row = df_scll.iloc[i]
-
-        state = row["state_name"]
-        county = row["county_name"]
-        dict[state][county] = gen_lon_lat_in_county(state, county, count)
-        if i % 50 == 0:
-            print(f"Have completed generation of {str(i)} sequences of lon-lats")
-    return dict
+# %%
+def create_lon_lat_seqs(df_scll, counties, count):
+    df_scll['STATE_NAME'] = df_scll['state_name'].apply(lambda x: x.title())
+    df_scll['NAME'] = df_scll['county_name'].apply(lambda x: x.title())
+    # df_scll.index.difference(counties.index)
+    broken_counties = [('Illinois', 'De Kalb'),
+                ('Illinois',      'La Salle'),
+                ('Illinois',     'Mcdonough'),
+                ('Illinois',       'Mchenry'),
+                ('Illinois',        'Mclean'),
+                ('Illinois',      'St Clair'),
+                ( 'Indiana',       'De Kalb'),
+                ( 'Indiana',      'La Porte'),
+                ( 'Indiana',      'Lagrange'),
+                (    'Iowa',       'O Brien'),
+                (  'Kansas',     'Mcpherson'),
+                ('Missouri',    'St Charles'),
+                ('Missouri',      'St Louis'),
+                ('Missouri', 'Ste Genevieve')]
+    fixed_counties = [
+        ('Illinois',          'DeKalb',   'DeKalb'),
+                ('Illinois',      'Salle', ""),
+                ('Illinois',     'Mcdonough', ""),
+                ('Illinois',       'Mchenry', ""),
+                ('Illinois',        'Mclean', ""),
+                ('Illinois',      'St. Clair', ""),
+                ( 'Indiana',       'DeKalb', ""),
+                ( 'Indiana',      'LaPorte', ""),
+                ( 'Indiana',      'Lagrange', ""),
+                (    'Iowa',       'Brien', ""),
+                (  'Kansas',     'Mcpherson', ""),
+                ('Missouri',    'St. Charles', ""),
+                ('Missouri',      'St. Louis', ""),
+                ('Missouri', 'Ste. Genevieve', "")]
+    for (br_state, br_county), (state, county, new_county) in zip(broken_counties, fixed_counties):
+        
+        sery = counties[(counties.STATE_NAME == state) & (counties.NAME.str.contains(county, case=False))][["STATE_NAME", "NAME"]]
+        df_scll.loc[(df_scll.STATE_NAME == br_state) & (df_scll.NAME == br_county), ["STATE_NAME", "NAME"]] = [sery["STATE_NAME"].iloc[0], sery["NAME"].iloc[0]]
+        if len(sery) == 0:
+            print(county, sery)
+    df_scll = df_scll.set_index(["STATE_NAME", "NAME"])
+    counties = counties.set_index(["STATE_NAME", "NAME"])
+    j_counties = counties.join(df_scll, on=["STATE_NAME", "NAME"], how='inner')
+    assert len(df_scll.index.difference(counties.index)) == 0
+    j_counties["points"] = j_counties.sample_points(size=count)
+    samples = j_counties["points"].to_dict()
+    seq_lat_lon = defaultdict(lambda: defaultdict(list))
+    for (state, county), points in samples.items():
+        seq_lat_lon[state][county] =  [ (p.x, p.y) for p in points.geoms ]
+    return seq_lat_lon
 
 
 print(datetime.datetime.now())
-dict = create_lon_lat_seqs(5000)
+seq_lat_lon = create_lon_lat_seqs(df_scll, counties, 5000)
 print(datetime.datetime.now())
 
 
 # <span style=color:blue>Save dict as json  </span>
 
-out_file = "state_county__seq_of_lon_lats.json"
+out_file = archive_dir / "state_county__seq_of_lon_lats.json"
 
-with open(archive_dir + out_file, "w") as fp:
-    json.dump(dict, fp)
+with out_file.open("w") as fp:
+    json.dump(seq_lat_lon, fp)
 
 
-#!/usr/bin/env python
+
+# %%
+
+# #!/usr/bin/env python
 # coding: utf-8
 
 # ## <span style=color:blue>This notebook builds the function soy_is_here(year,lat,lon), which produces "True" if the 100m x 100m area around lon-lat was a soybean field in the given year.  (At least, according to the data of USDA NASS.)  </span>
@@ -224,16 +151,19 @@ with open(archive_dir + out_file, "w") as fp:
 
 # first, examining the structure of the files I downloaded
 
-dir_main = "CROPSCAPE/DATA-DOWNLOADS/"
-os.makedirs(dir_main, exist_ok=True)
+dir_main = Path("CROPSCAPE/DATA-DOWNLOADS/")
+dir_main.mkdir(parents=True, exist_ok=True)
 
 
 # following the structure of the directory name and file from downloaded zip files, which are organized by year
 def pathname_for_year(year):
     last_dir_name = f"{str(year)}_30m_cdls/"
     file_name = f"{str(year)}_30m_cdls.tif"
-    return dir_main + last_dir_name + file_name
+    return dir_main / last_dir_name / file_name
 
+def dataset_for_year(year):
+    dataset = rasterio.open(str(pathname_for_year(year)))
+    return dataset
 
 # test
 print(pathname_for_year(2022))
@@ -341,9 +271,9 @@ def pull_useful(
 
 path_to_file = pathname_for_year(2008)
 # path_to_file = pathname_for_year(2022)
-dataset = gdal.Open(path_to_file)
+dataset = gdal.Open(str(path_to_file))
 useful_gdal = pull_useful_gdal(dataset)
-gdalInfoReq = " ".join(["gdalinfo", "-json", path_to_file])
+gdalInfoReq = " ".join(["gdalinfo", "-json", str(path_to_file)])
 
 result = subprocess.run([gdalInfoReq], shell=True, capture_output=True, text=True)
 
@@ -385,8 +315,7 @@ print(from_4326_to_5070(old_lon, old_lat))
 
 # expects lon-lat to be in EPSG:4326.
 # These are converted to EPSG:5070 inside the function
-def get_coordinate_pixels(tiff_file, lon, lat):
-    dataset = rasterio.open(tiff_file)
+def get_coordinate_pixels(dataset, lon, lat):
     lon_new, lat_new = from_4326_to_5070(lon, lat)
 
     py, px = dataset.index(lon_new, lat_new)
@@ -398,22 +327,21 @@ def get_coordinate_pixels(tiff_file, lon, lat):
 
 
 # test
-old_lon = -92.8
-old_lat = 42.7
-path_to_file = pathname_for_year(2008)
-print(get_coordinate_pixels(path_to_file, old_lon, old_lat))
-print()
-path_to_file = pathname_for_year(2022)
-print(get_coordinate_pixels(path_to_file, old_lon, old_lat))
+# old_lon = -92.8
+# old_lat = 42.7
+# path_to_file = pathname_for_year(2008)
+# print(get_coordinate_pixels(path_to_file, old_lon, old_lat))
+# print()
+# path_to_file = pathname_for_year(2022)
+# print(get_coordinate_pixels(path_to_file, old_lon, old_lat))
 # <span style=color:blue>Also, a function that that tests whether all 9 spots in the 3x3 square have a given value.  (We are interested in "5", which is soy beans.)</span>
 
 
 # land_use_val should be an integer; see, e.g.,
 #     https://www.nass.usda.gov/Research_and_Science/Cropland/metadata/metadata_ia22.htm
 #     for mapping from values to meanings
-def usage_is_here(year, lon, lat, land_use_val):
-    path_to_file = pathname_for_year(year)
-    arr = get_coordinate_pixels(path_to_file, lon, lat)
+def usage_is_here(dataset, lon, lat, land_use_val):
+    arr = get_coordinate_pixels(dataset, lon, lat)
     out = True
     for i in range(0, 3):
         for j in range(0, 3):
@@ -421,46 +349,40 @@ def usage_is_here(year, lon, lat, land_use_val):
     return out
 
 
-def soy_is_here(year, lon, lat):
-    return usage_is_here(year, lon, lat, 5) # 1 is corn, 5 is soy
+def soy_is_here(dataset, lon, lat):
+    return usage_is_here(dataset, lon, lat, 5) # 1 is corn, 5 is soy
 
-def corn_is_here(year, lon, lat):
-    return usage_is_here(year, lon, lat, 1) # 1 is corn, 5 is soy
+def corn_is_here(dataset, lon, lat):
+    return usage_is_here(dataset, lon, lat, 1) # 1 is corn, 5 is soy
 
-old_lon = -92.8
-old_lat = 42.7
-print(corn_is_here(2008, old_lon, old_lat))
-print(corn_is_here(2022, old_lon, old_lat))
+# old_lon = -92.8
+# old_lat = 42.7
+# print(corn_is_here(2008, old_lon, old_lat))
+# print(corn_is_here(2022, old_lon, old_lat))
 # ### <span style=color:blue>Importing the dictionary with lon-lat sequences.  Also setting a second dict that will hold lists lon-lats that are in soybean fields.</span>
 
-in_file = "state_county__seq_of_lon_lats.json"
-
-f = open(archive_dir + in_file)
-dict = json.load(f)
-
-print(dict.keys())
 # <span style=color:blue>Function that scans through one list of lon-lats and finds first set that are in soybean fields</span>
 
 
-def gen_corn_lon_lats(year, state, county, count):
-    list = dict[state][county]
+def gen_corn_lon_lats(dataset, year, state, county, count):
+    points = seq_lat_lon[state][county]
     i = 0
     out_list = []
-    for ll in list:
-        if corn_is_here(year, ll[0], ll[1]):
+    for ll in points:
+        if corn_is_here(dataset, ll[0], ll[1]):
             out_list += [ll]
             i += 1
         if i == 20:
             return out_list, []
     print(
-        f"\nFor {str(year)}, {state}, {county}: \nFailed to find {str(count)} lon-lats that were in soybean fields. Found only {str(i)}.\n"
+        f"\nFor {str(year)}, {state}, {county}: \nFailed to find {str(count)} lon-lats that were in corn fields. Found only {str(i)}.\n"
     )
     short_fall_record = [year, state, county, i]
     return out_list, short_fall_record
 
 
-list, short = gen_corn_lon_lats(2008, "ILLINOIS", "MASSAC", 20)
-print(list)
+corn_lat_lons, short = gen_corn_lon_lats(dataset_for_year(2008), 2008, "ILLINOIS", "MASSAC", 20)
+print(corn_lat_lons)
 print(short)
 print()
 # list, short = gen_soy_lon_lats(2008, "MISSOURI", "DALLAS", 20)
@@ -468,17 +390,17 @@ print()
 # print(short)
 # <span style=color:blue>Function that generates a fixed number of lon-lats in soybean fields for each year and each county. This took quite a while to run completely -- about 4 hours.    </span>
 
-working_dir = "OUTPUTS/OUTPUT-v01/"
-os.makedirs(working_dir, exist_ok=True)
-dict1_file = "year_state_county_corn_seq.json"
-short_list = "year_state_county_shortfalls.json"
+working_dir = Path("OUTPUTS/OUTPUT-v01/")
+working_dir.mkdir(parents=True, exist_ok=True)
+dict1_file = working_dir / "year_state_county_corn_seq.json"
+short_list = working_dir / "year_state_county_shortfalls.json"
 
 
-def gen_all_soy_lists(dict, count):
+def gen_all_corn_lists(corn_lat_lons, count):
     dict1 = {}
     for year in range(2008, 2023):
         dict1[year] = {}
-        for key in dict.keys():
+        for key in corn_lat_lons.keys():
             dict1[year][key] = {}
     print(dict1.keys())
     print(dict1[2013].keys())
@@ -487,38 +409,39 @@ def gen_all_soy_lists(dict, count):
 
     i = 0
     for year in dict1.keys():
-        for state in dict.keys():
-            for county in dict[state].keys():
-                list, short = gen_corn_lon_lats(year, state, county, count)
-                dict1[year][state][county] = list
+        dataset = dataset_for_year(year)
+        for state in corn_lat_lons.keys():
+            for county in corn_lat_lons[state].keys():
+                points, short = gen_corn_lon_lats(dataset, year, state, county, count)
+                dict1[year][state][county] = points
                 if short != []:
                     shortfall_list += [short]
 
                 i += 1
                 if i % 20 == 0:
                     print(
-                        f"Have generated soybean lon-lat lists for {str(i)} year-county pairs"
+                        f"Have generated corn lon-lat lists for {str(i)} year-county pairs"
                     )
                 if i % 50 == 0:
-                    with open(working_dir + dict1_file, "w") as fp:
+                    with dict1_file.open("w") as fp:
                         json.dump(dict1, fp)
-                    with open(working_dir + short_list, "w") as fp:
+                    with short_list.open("w") as fp:
                         json.dump(shortfall_list, fp)
 
     return dict1, shortfall_list
 
 
 print(datetime.datetime.now())
-dict1, short = gen_all_soy_lists(dict, 20)
+dict1, short = gen_all_corn_lists(seq_lat_lon, 20)
 print(datetime.datetime.now())
 # <span style=color:blue>Save the dict1 and also the shortfalls    </span>
 
-dict1_file = "year_state_county_corn_seq.json"
-short_list = "year_state_county_shortfalls.json"
+dict1_file = archive_dir / "year_state_county_corn_seq.json"
+short_list = archive_dir / "year_state_county_shortfalls.json"
 
-with open(archive_dir + dict1_file, "w") as fp:
+with dict1_file.open("w") as fp:
     json.dump(dict1, fp)
-with open(archive_dir + short_list, "w") as fp:
+with short_list.open("w") as fp:
     json.dump(short, fp)
 # <span style=color:blue>Collecting year-state-county with zero hits </span>
 
@@ -532,14 +455,14 @@ print(len(zero_falls))
 
 print(json.dumps(zero_falls, indent=4))
 
-zero_file = "year_state_county_corn_zero_falls.json"
-with open(archive_dir + zero_file, "w") as fp:
+zero_file = archive_dir / "year_state_county_corn_zero_falls.json"
+with zero_file.open("w") as fp:
     json.dump(zero_falls, fp)
 # <span style=color:blue>Checking if any year-state-county in zero_falls had a positive yield in year_state_county_yield table</span>
 
-yscy_file = "year_state_county_yield.csv"
+yscy_file = archive_dir / "year_state_county_yield.csv"
 
-df_yscy = pd.read_csv(archive_dir + yscy_file)
+df_yscy = pd.read_csv(yscy_file)
 print("Top of df_yscy")
 print(df_yscy.head())
 
@@ -564,11 +487,14 @@ print("\nListing of zero_with_yield")
 df_zwy = pd.DataFrame(zero_with_yield)
 print(df_zwy.head(30))
 
-zero_with_yield = "year_state_county_soy_zero_with_yield.csv"
-df_zwy.to_csv(archive_dir + zero_with_yield, index=False)
+zero_with_yield = archive_dir / "year_state_county_soy_zero_with_yield.csv"
+df_zwy.to_csv(zero_with_yield, index=False)
 # <span style=color:blue>For this exercise, we will drop these year-state-county triples from consideration.  A more thorough approach would be to focus on these year-state-county pairs (and perhaps the other ones with < 20 lon-lats), and randomly generate more lon-lats within the county until at least a few are found inside soybean fields.  (On the one hand, there have to be some if there was a yield ... however, CropScape is not perfect and may not have identified them accurately.)</span>
 
-#!/usr/bin/env python
+
+# %%
+
+# #!/usr/bin/env python
 # coding: utf-8
 
 # ## <span style=color:blue>In this notebook, we illustrate how to get the NDVI value for a single cell of size roughly 100m x 100m.  This will give you the basic machinery needed to gather sequences of NDVI values that can be incorporated into your ML pipelines   </span>
