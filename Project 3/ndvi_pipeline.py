@@ -37,6 +37,9 @@ from sentinelhub import (
 )
 from shapely.geometry import Point
 from collections import defaultdict
+from ipyleaflet import Map, GeoData, basemaps, LayersControl
+import geopandas
+import json
 
 
 # %%
@@ -121,11 +124,11 @@ def create_lon_lat_seqs(df_scll, counties, count):
     seq_lat_lon = defaultdict(lambda: defaultdict(list))
     for (state, county), points in samples.items():
         seq_lat_lon[state][county] =  [ (p.x, p.y) for p in points.geoms ]
-    return seq_lat_lon
+    return seq_lat_lon, j_counties
 
 
 print(datetime.datetime.now())
-seq_lat_lon = create_lon_lat_seqs(df_scll, counties, 5000)
+seq_lat_lon, j_counties = create_lon_lat_seqs(df_scll, counties, 5000)
 print(datetime.datetime.now())
 
 
@@ -137,22 +140,6 @@ with out_file.open("w") as fp:
     json.dump(seq_lat_lon, fp)
 
 
-
-# %%
-rect = j_counties.points.unary_union.envelope
-
-# %%
-import contextily as cx
-
-# %%
-rect.bounds
-
-# %%
-j_counties.crs
-
-# %%
-ax = j_counties.plot(alpha=0.5, edgecolor="k")#gpd.GeoDataFrame(geometry=[rect], crs=j_counties.crs).plot(alpha=0.5, edgecolor="k")
-cx.add_basemap(ax, zoom=12, source=cx.providers.Esri.WorldImagery)
 
 # %%
 from ipyleaflet import Map, GeoData, basemaps, LayersControl
@@ -205,12 +192,6 @@ def make_grid(polygon, edge_size):
 
 
 # %%
-j_counties
-
-# %%
-countries
-
-# %%
 grid = make_grid(j_counties.points.unary_union, 0.2)
 countries = gpd.GeoDataFrame(geometry=grid, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
 
@@ -224,7 +205,7 @@ geo_data = GeoData(geo_dataframe = countries,
 m.add_layer(geo_data)
 m
 
-# %%
+# %% jupyter={"outputs_hidden": true}
 
 # #!/usr/bin/env python
 # coding: utf-8
@@ -357,8 +338,8 @@ def pull_useful(
 
 path_to_file = pathname_for_year(2008)
 # path_to_file = pathname_for_year(2022)
-dataset = gdal.Open(str(path_to_file))
-useful_gdal = pull_useful_gdal(dataset)
+# dataset = gdal.Open(str(path_to_file))
+# useful_gdal = pull_useful_gdal(dataset)
 gdalInfoReq = " ".join(["gdalinfo", "-json", str(path_to_file)])
 
 result = subprocess.run([gdalInfoReq], shell=True, capture_output=True, text=True)
@@ -372,8 +353,8 @@ gdalInfo = json.loads(result.stdout)
 useful = pull_useful(gdalInfo)
 with open("gdal_process.json", "w") as outfile:
     json.dump(useful, outfile, indent=2, sort_keys=True)
-with open("gdal_lib.json", "w") as outfile:
-    json.dump(useful_gdal, outfile, indent=2, sort_keys=True)
+# with open("gdal_lib.json", "w") as outfile:
+    # json.dump(useful_gdal, outfile, indent=2, sort_keys=True)
 # exit()
 
 
@@ -390,9 +371,9 @@ def from_4326_to_5070(lon, lat):
 
 
 # test on coordinates from central Iowa
-old_lon = -92.8
-old_lat = 42.7
-print(from_4326_to_5070(old_lon, old_lat))
+# old_lon = -92.8
+# old_lat = 42.7
+# print(from_4326_to_5070(old_lon, old_lat))
 # (you can check this at https://epsg.io/transform)
 # <span style=color:blue>Function that fetches a 3x3 square of pixel values from the given tif file.  The pixels in the tif file correspond to  30m x 30m, so we are looking at a rouhgly 100m x 100m area that is all or mostly soybean field </span>
 #
@@ -467,10 +448,10 @@ def gen_corn_lon_lats(dataset, year, state, county, count):
     return out_list, short_fall_record
 
 
-corn_lat_lons, short = gen_corn_lon_lats(dataset_for_year(2008), 2008, "ILLINOIS", "MASSAC", 20)
-print(corn_lat_lons)
-print(short)
-print()
+# corn_lat_lons, short = gen_corn_lon_lats(dataset_for_year(2008), 2008, "ILLINOIS", "MASSAC", 20)
+# print(corn_lat_lons)
+# print(short)
+# print()
 # list, short = gen_soy_lon_lats(2008, "MISSOURI", "DALLAS", 20)
 # print(list)
 # print(short)
@@ -667,6 +648,9 @@ for i, geo in enumerate(small_grid.geometry):
         f"For grid cell {i}, image shape at {resolution2} m resolution: {point_iowa_size} pixels"
     )
 
+
+# %%
+
 for i, geo in enumerate(big_grid.geometry):
     resolution1 = 150 # make grid ~3.3
     corner_iowa_bbox = BBox(bbox=geo.bounds, crs=CRS.WGS84)
@@ -675,8 +659,34 @@ for i, geo in enumerate(big_grid.geometry):
         f"For grid cell {i}, image shape at {resolution1} m resolution: {corner_iowa_size} pixels"
     )
 
+
 # %%
-corner_iowa_color_imgs_1_day
+j_counties.total_bounds
+
+# %%
+from ipyleaflet import Map, WMSLayer
+# from sentinelhub.data_request import WmsRequest, WcsRequest
+# from sentinelhub.constants import MimeType, CustomUrlParam
+# from sentinelhub.common import BBox, CRS
+
+grid = make_grid(j_counties.points.unary_union, 0.2)
+countries = gpd.GeoDataFrame(geometry=grid, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=[40.198611, -92.575278], zoom = 6, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+sh_wms_url = 'https://services.sentinel-hub.com/ogc/wms/08f41ee9-4eae-4191-9683-24bbb69f8119?showlogo=0&time=2017-07-18/2017-07-19'
+
+m.add_layer(WMSLayer(url=sh_wms_url, layers="TRUE-COLOR-S2-L1C", tile_size=512, opacity=0.5))
+m
+
+# %%
+corner_iowa_color_imgs_1_day.shape
 
 # %%
 
@@ -698,6 +708,12 @@ corner_iowa_color_imgs_1_day
 # With request_true_color_1_day, the image from Jun 12th 2020 is downloaded. Without any additional parameters in the evalscript, the downloaded data will correspond to reflectance values in UINT8 format (values in 0-255 range).
 #
 # <span style=color:blue>I am also experimenting with request_true_color_7_day, to see what happens if my interval is multiple days. </span>
+resolution1 = 150 # make grid ~3.3
+corner_iowa_bbox = BBox(bbox=[-96.481934,42.520700,-95.075684,43.516689], crs=CRS.WGS84)
+corner_iowa_size = bbox_to_dimensions(corner_iowa_bbox, resolution=resolution1)
+print(
+    f"For grid cell, image shape at {resolution1} m resolution: {corner_iowa_size} pixels"
+)
 
 evalscript_true_color = """
     //VERSION=3
@@ -705,16 +721,16 @@ evalscript_true_color = """
     function setup() {
         return {
             input: [{
-                bands: ["B02", "B03", "B04"]
+                bands: ["B01", "B03", "B05", "B08"]
             }],
             output: {
-                bands: 3
+                bands: 4
             }
         };
     }
 
     function evaluatePixel(sample) {
-        return [sample.B04, sample.B03, sample.B02];
+        return [sample.B01, sample.B03, sample.B05, sample.B08];
     }
 """
 
@@ -732,6 +748,297 @@ request_true_color_1_day = SentinelHubRequest(
     config=config,
 )
 
+
+# %%
+corner_iowa_size
+
+# %%
+sh_data = request_true_color_1_day.get_data()
+
+# %%
+import numpy as np
+np.array(sh_data).shape
+
+# %%
+from sentinelhub import geo_utils
+
+# %%
+bb_utm = geo_utils.to_utm_bbox(corner_iowa_bbox)
+
+# Fetch transform 
+transf = bb_utm.get_transform_vector(resx=resolution1, resy=resolution1)
+# geo_utils.trans
+# And now you can query the pixel position of your WGS84 coordinates
+pixel_pos = geo_utils.wgs84_to_pixel(-95.075684,43.516689, transf, utm_epsg=bb_utm.crs)
+# (x_upper_left, res_x, 0, y_upper_left, 0, -res_y)
+# transform = (corner_iowa_bbox.max_x, resolution1, 0, corner_iowa_bbox.min_y, 0, resolution1)
+
+# wgs84_to_pixel(-96.481934,42.520700, transform)\
+pixel_pos
+
+
+# %%
+sh_data[0][pixel_pos[0]][pixel_pos[1]-1]
+
+# %% [markdown]
+# gndvi = (b8 - b3) / (b8 + b3)
+#
+# garvi = b8 - (b3 - b1 - b5)/ b8 - (b3 + b1 - b5)
+
+# %% [markdown]
+# # Getting dictionary of all lat/lons that have corn
+
+# %%
+out_file = archive_dir / "year_state_county_corn_seq.json"
+
+with open(out_file, "r") as f:
+    seq_lat_lon = json.load(f)
+
+
+# %% [markdown]
+# # Converting that dict to a pandas df
+
+# %%
+data = []
+for key, value in seq_lat_lon.items():
+    for k2, v2 in value.items():
+        for k3, v3 in v2.items():
+            if type(v3) == list:
+                data.append([key, k2, k3, v3])
+
+# %%
+seq_lat_lon_df = pd.DataFrame(data, columns=["year", "state", "county", "point"]).explode("point")
+seq_lat_lon_df.set_index(["year", "state", "county"], inplace=True)
+seq_lat_lon_df.dropna(inplace=True)
+
+# %% [markdown]
+# ## This is the output. Each combination of year/state/county has a bunch of points
+
+# %%
+seq_lat_lon_df
+
+# %% [markdown]
+# ## Convert that into a geo data frame by converting each lat/lon pair into a Point object
+
+# %%
+seq_lat_lon_df.dropna(inplace=True)
+
+# %%
+from shapely.geometry import Point
+
+# there's a point somewhere that's a single number instead of a pair
+# grabbing a sample to test the rest of the pipeline
+sample = seq_lat_lon_df#.iloc[:100]
+
+sample["geometry"] = sample["point"].apply(Point)
+gdf = gpd.GeoDataFrame(seq_lat_lon_df, crs=counties.crs).reset_index()
+gdf["ndvi"] = 0
+
+# %%
+gdf.set_geometry("geometry")
+
+# %%
+# countries = gpd.GeoDataFrame(geometry=gdf.geometry, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = gdf)
+
+                #    style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                #    hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                #    name = 'Countries')
+
+m.add_layer(geo_data)
+
+# m.add_layer(gdf)#gpd.GeoDataFrame(geometry=gdf.geometry, crs=gdf.crs))
+
+m
+
+# %%
+
+countries = gpd.GeoDataFrame(geometry=[gdf.geometry.unary_union], crs=gdf.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+m
+
+# %%
+
+countries = gpd.GeoDataFrame(geometry=gdf.geometry.convex_hull, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+m
+
+# %%
+
+grid = make_grid(gdf.geometry.unary_union, 0.2)
+countries = gpd.GeoDataFrame(geometry=grid, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+m
+
+
+# %%
+
+grid = make_grid(gdf.geometry.unary_union, 3.3)
+countries = gpd.GeoDataFrame(geometry=grid, crs=j_counties.crs)#.plot(alpha=0.5, edgecolor="k")
+
+m = Map(center=(52.3,8.0), zoom = 3, basemap= basemaps.Esri.WorldTopoMap)
+
+geo_data = GeoData(geo_dataframe = countries,
+                   style={'color': 'black', 'fillColor': '#3366cc', 'opacity':0.05, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.6},
+                   hover_style={'fillColor': 'red' , 'fillOpacity': 0.2},
+                   name = 'Countries')
+
+m.add_layer(geo_data)
+m
+
+
+# %%
+gdf.reset_index()
+
+# %%
+big_grid = make_grid(gdf.unary_union, 3.3)
+big_grid = gpd.GeoDataFrame(geometry=big_grid, crs=j_counties.crs)
+
+# %%
+big_grid.geometry.crs
+
+# %% [markdown]
+# # Use the within() function to check if the corn points are in the current area of the big_grid
+
+# %%
+is_in_grid = gdf.within(big_grid.iloc[0])
+# get indices where True
+point_idxs = np.where(is_in_grid)
+point_idxs
+
+# %%
+evalscript_true_color = """
+    //VERSION=3
+
+    function setup() {
+        return {
+            input: [{
+                bands: ["B01", "B03", "B05", "B08"]
+            }],
+            output: {
+                bands: 4
+            }
+        };
+    }
+
+    function evaluatePixel(sample) {
+        return [sample.B01, sample.B03, sample.B05, sample.B08];
+    }
+"""
+
+for i, geo in enumerate(big_grid.geometry):
+    resolution1 = 150 # make grid ~3.3
+    corner_iowa_bbox = BBox(bbox=geo.bounds, crs=CRS.WGS84)
+    corner_iowa_size = bbox_to_dimensions(corner_iowa_bbox, resolution=resolution1)
+    # print(
+    #     f"For grid cell {i}, image shape at {resolution1} m resolution: {corner_iowa_size} pixels"
+    # )
+    request_true_color_1_day = SentinelHubRequest(
+        evalscript=evalscript_true_color,
+        input_data=[
+            SentinelHubRequest.input_data(
+                data_collection=DataCollection.SENTINEL2_L1C,
+                time_interval=("2020-06-12", "2020-06-13"),
+            )
+        ],
+        responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
+        bbox=corner_iowa_bbox,
+        size=corner_iowa_size,
+        config=config,
+    )
+    sh_data = np.array(request_true_color_1_day.get_data())
+    # sh_data = np.ones((1, 2500, 2500, 4))
+    bb_utm = geo_utils.to_utm_bbox(corner_iowa_bbox)
+    # Fetch transform 
+    transf = bb_utm.get_transform_vector(resx=resolution1, resy=resolution1)
+    # geo_utils.trans
+    # And now you can query the pixel position of your WGS84 coordinates
+    is_in_grid = gdf.within(geo)
+    # point_idxs = gdf.iloc[gdf.within(geo), "ndvi"] #np.where(is_in_grid)
+    # print(point_idxs)
+    # continue
+    b01  = sh_data[0][:, :, 0]
+    b03  = sh_data[0][:, :, 1]
+    b05  = sh_data[0][:, :, 2]
+    nir  = sh_data[0][:, :, 3]
+    garvi = np.nan_to_num((nir - (b03 - b01 - b05))/(nir - (b03 + b01 - b05)))
+    gndvi = np.nan_to_num((nir - b03)/(nir + b03))
+    # print(garvi.shape)
+    # print(gndvi.shape)
+    # print(point_idxs.shape)
+    # continue
+    def ndvi_value(row):
+        # print(row.geometry.x, row.geometry.y)
+        print(row.geometry.crs)
+        print(row.crs)
+        pixel_pos = geo_utils.wgs84_to_pixel(row.geometry.x, row.geometry.y, transf, utm_epsg=bb_utm.crs)
+        # print(pixel_pos[1], pixel_pos[0])
+        # print(garvi[pixel_pos[1], pixel_pos[0]])
+        try:
+            garvi_value = garvi[pixel_pos[0]-1, pixel_pos[1]-1]
+        except IndexError:
+            print("Pixel pos:", pixel_pos, "Garvi shape:", garvi.shape, "Sh shape:", sh_data.shape)
+            print("Tile size:", corner_iowa_size)
+            print("Geometry:", row.geometry.x, row.geometry.y)
+    gdf.loc[is_in_grid, "ndvi"] = gdf.loc[is_in_grid].apply(ndvi_value, axis=1)
+    continue
+    for loc in point_idxs:
+        try:
+            lat_lon_pair = gdf.iloc[loc]
+            # THIS NEEDS WORK
+            print(lat_lon_pair[0], lat_lon_pair[1])
+            pixel_pos = geo_utils.wgs84_to_pixel(lat_lon_pair[0], lat_lon_pair[1], transf, utm_epsg=bb_utm.crs)
+            # print(pixel_pos)
+            # do something with the pixel_pos
+            # bands = sh_data[0][pixel_pos[1]][pixel_pos[0]] #  [sample.B01, sample.B03, sample.B05, sample.B08]
+            # garvi = 
+            
+        except KeyError:
+            continue
+            # print("key error")
+        # print("garvi", garvi[pixel_pos[1], pixel_pos[0]])
+        # print("gndvi", gndvi[pixel_pos[1], pixel_pos[0]])
+
+    
+
+# %%
+gdf[gdf.ndvi != np.inf]
+
+# %%
+point_idxs
+
+# %%
+lat_lon_pair
+
+# %%
+
 request_true_color_7_day = SentinelHubRequest(
     evalscript=evalscript_true_color,
     input_data=[
@@ -748,6 +1055,10 @@ request_true_color_7_day = SentinelHubRequest(
 # <span style=color:blue>Invoking these two functions    </span>
 
 corner_iowa_color_imgs_1_day = request_true_color_1_day.get_data()
+
+
+# %%
+
 corner_iowa_color_imgs_7_day = request_true_color_7_day.get_data()
 # <span style=color:blue>Exploring the outputs.  It appears that the multi-day gives back the sums of the values for the days that are contributing.    </span>
 
